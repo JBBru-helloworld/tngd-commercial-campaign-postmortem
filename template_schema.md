@@ -13,87 +13,87 @@ At execution time, always derive the final schema from the **currently uploaded*
 
 ## Section A: Campaign Header / Identity
 
-| Generic Field | Placeholder | Source | Rule |
-|---|---|---|---|
-| Campaign Name | `{{CAMPAIGN_NAME}}` | Approved RFA | Copy from current RFA only. |
-| RFA No. | `{{APPROVED_RFA_NO}}` | Approved RFA | Populate only if status is Approved. |
-| Partner Name | `{{PARTNER_NAME}}` | Approved RFA / current package | Must reflect current campaign only. |
-| Type of Campaign | `{{TYPE_OF_CAMPAIGN}}` | BU manual / trusted source | If not derivable, use `MANUAL_INPUT_REQUIRED`. |
-| Campaign Period | `{{CAMPAIGN_PERIOD}}` | RFA / BU override | Use current campaign date range only. |
-| Funding Mechanism | `{{FUNDING_MECHANISM}}` | Approved RFA / BU confirmation | Flag if conflicts across sources. |
-| Budget / Approved Amount | `{{RFA_AMOUNT_RM}}` | Approved RFA | Do not infer from spend. |
-| Objectives / Mechanics | `{{COMMERCIAL_OBJECTIVES_TEXT}}`, `{{MECHANIC_TEXT}}` | Approved RFA | Preserve reviewable wording. |
+| Generic Field | Placeholder | Source | Rule | Phase |
+|---|---|---|---|---|
+| Campaign Name | `{{CAMPAIGN_NAME}}` | Approved RFA | Copy from current RFA only. | Phase 1 |
+| RFA No. | `{{APPROVED_RFA_NO}}` | Approved RFA | Populate only if status is Approved. | Phase 1 |
+| Partner Name | `{{PARTNER_NAME}}` | Approved RFA / current package | Must reflect current campaign only. | Phase 1 |
+| Type of Campaign | `{{TYPE_OF_CAMPAIGN}}` | BU manual / trusted source | If not derivable, use `MANUAL_INPUT_REQUIRED`. | Phase 1 |
+| Campaign Period | `{{CAMPAIGN_PERIOD}}` | RFA / BU override | Use current campaign date range only. | Phase 1 |
+| Funding Mechanism | `{{FUNDING_MECHANISM}}` | Approved RFA / BU confirmation | Flag if conflicts across sources. | Phase 1 |
+| Budget / Approved Amount | `{{RFA_AMOUNT_RM}}` | Approved RFA | Do not infer from spend. | Phase 1 |
+| Objectives / Mechanics | `{{COMMERCIAL_OBJECTIVES_TEXT}}`, `{{MECHANIC_TEXT}}` | Approved RFA | Preserve reviewable wording. | Phase 1 |
 
 ## Section B: Core Campaign KPI Block
 
-| Generic Field | Placeholder | Source | Rule |
-|---|---|---|---|
-| Campaign Participants | `{{CAMPAIGN_PARTICIPANTS}}` | Partner raw / internal | Distinct CHARGE users unless net rule is explicitly required. |
-| Campaign TPV (RM) | `{{CAMPAIGN_TPV_RM}}` | Partner raw / internal | CHARGE-only unless net rule is explicitly required. |
-| Campaign Txn # | `{{CAMPAIGN_TXN_COUNT}}` | Partner raw / internal | Distinct successful charge transactions. |
-| Partner Incentive / CPAM Cost | `{{CPAM_COST_RM}}` | Partner raw / finance validation | Validate against policy where needed. |
-| Internal TPV | `{{INTERNAL_TPV_RM}}` | Internal file | Final source-of-truth when available. |
-| Internal Participants | `{{INTERNAL_PARTICIPANTS}}` | Internal file | Final source-of-truth when available. |
-| Internal Txn # | `{{INTERNAL_TXN_COUNT}}` | Internal file | Final source-of-truth when available. |
-| TPV Variance | `{{TPV_VARIANCE_PCT}}` | Derived | `(Internal - Partner) / Internal` when both exist. |
-| Txn Variance | `{{TXN_VARIANCE_PCT}}` | Derived | Same rule. |
-| User Variance | `{{USER_VARIANCE_PCT}}` | Derived | Same rule. |
+| Generic Field | Placeholder | Source | Rule | Phase |
+|---|---|---|---|---|
+| Campaign Participants | `{{CAMPAIGN_PARTICIPANTS}}` | Partner raw data (provisional) | Distinct CHARGE users unless net rule is explicitly required. Phase 1: write partner-derived provisional value. Phase 2: overwrite with internal data. | Phase 1 (provisional, partner-derived) |
+| Campaign TPV (RM) | `{{CAMPAIGN_TPV_RM}}` | Partner raw data (provisional) | CHARGE-only unless net rule is explicitly required. Phase 1: write partner-derived provisional value. Phase 2: overwrite with internal data. | Phase 1 (provisional, partner-derived) |
+| Campaign Txn # | `{{CAMPAIGN_TXN_COUNT}}` | Partner raw data (provisional) | Distinct successful charge transactions. Phase 1: write partner-derived provisional value. Phase 2: overwrite with internal data. | Phase 1 (provisional, partner-derived) |
+| Partner Incentive / CPAM Cost | `{{CPAM_COST_RM}}` | Partner raw / finance validation | Validate against policy where needed. Write from partner file if present; otherwise mark `PENDING_HUMAN_VALIDATION`. | Phase 1 (if in partner file) / Phase 2 |
+| Internal TPV | `{{INTERNAL_TPV_RM}}` | Internal file | Final source-of-truth when available. Mark `PENDING_HUMAN_VALIDATION` in Phase 1. | Phase 2 |
+| Internal Participants | `{{INTERNAL_PARTICIPANTS}}` | Internal file | Final source-of-truth when available. Mark `PENDING_HUMAN_VALIDATION` in Phase 1. | Phase 2 |
+| Internal Txn # | `{{INTERNAL_TXN_COUNT}}` | Internal file | Final source-of-truth when available. Mark `PENDING_HUMAN_VALIDATION` in Phase 1. | Phase 2 |
+| TPV Variance | `{{TPV_VARIANCE_PCT}}` | Derived | `(Internal - Partner) / Internal` when both exist. Mark `PENDING_HUMAN_VALIDATION` in Phase 1. | Phase 2 |
+| Txn Variance | `{{TXN_VARIANCE_PCT}}` | Derived | Same rule. | Phase 2 |
+| User Variance | `{{USER_VARIANCE_PCT}}` | Derived | Same rule. | Phase 2 |
 
 ## Section C: Retention Block
 
-| Generic Field | Placeholder | Source | Rule |
-|---|---|---|---|
-| Post 1M Retention | `{{RETENTION_POST_1M}}` | Internal retention file | Cohort aligned to current campaign. |
-| Post 2M Retention | `{{RETENTION_POST_2M}}` | Internal retention file | Same rule. |
-| Post 3M Retention | `{{RETENTION_POST_3M}}` | Internal retention file | Same rule. |
-| Post 4M Retention | `{{RETENTION_POST_4M}}` | Internal retention file | Same rule. |
-| Post 5M Retention | `{{RETENTION_POST_5M}}` | Internal retention file | Same rule. |
-| Post 6M Retention | `{{RETENTION_POST_6M}}` | Internal retention file | Same rule. |
-| Post 7M Retention | `{{RETENTION_POST_7M}}` | Internal retention file | Same rule. |
-| Post 8M Retention | `{{RETENTION_POST_8M}}` | Internal retention file | Same rule. |
-| Post 9M Retention | `{{RETENTION_POST_9M}}` | Internal retention file | Same rule. |
-| Post 10M Retention | `{{RETENTION_POST_10M}}` | Internal retention file | Same rule. |
-| Post 11M Retention | `{{RETENTION_POST_11M}}` | Internal retention file | Same rule. |
-| Post 12M Retention | `{{RETENTION_POST_12M}}` | Internal retention file | Same rule. |
+| Generic Field | Placeholder | Source | Rule | Phase |
+|---|---|---|---|---|
+| Post 1M Retention | `{{RETENTION_POST_1M}}` | Internal retention file | Cohort aligned to current campaign. Mark `PENDING_HUMAN_VALIDATION` in Phase 1. | Phase 2 |
+| Post 2M Retention | `{{RETENTION_POST_2M}}` | Internal retention file | Same rule. | Phase 2 |
+| Post 3M Retention | `{{RETENTION_POST_3M}}` | Internal retention file | Same rule. | Phase 2 |
+| Post 4M Retention | `{{RETENTION_POST_4M}}` | Internal retention file | Same rule. | Phase 2 |
+| Post 5M Retention | `{{RETENTION_POST_5M}}` | Internal retention file | Same rule. | Phase 2 |
+| Post 6M Retention | `{{RETENTION_POST_6M}}` | Internal retention file | Same rule. | Phase 2 |
+| Post 7M Retention | `{{RETENTION_POST_7M}}` | Internal retention file | Same rule. | Phase 2 |
+| Post 8M Retention | `{{RETENTION_POST_8M}}` | Internal retention file | Same rule. | Phase 2 |
+| Post 9M Retention | `{{RETENTION_POST_9M}}` | Internal retention file | Same rule. | Phase 2 |
+| Post 10M Retention | `{{RETENTION_POST_10M}}` | Internal retention file | Same rule. | Phase 2 |
+| Post 11M Retention | `{{RETENTION_POST_11M}}` | Internal retention file | Same rule. | Phase 2 |
+| Post 12M Retention | `{{RETENTION_POST_12M}}` | Internal retention file | Same rule. | Phase 2 |
 
 ## Section D: Revenue / Cost / ROI Logic
 
-| Generic Field | Placeholder / Formula | Source | Rule |
-|---|---|---|---|
-| Campaign Revenue (RM) | `= {{CAMPAIGN_TPV_RM}} * {{MDR_RATE}}` | Derived | Keep as formula logic. |
-| MDR | `{{MDR_RATE}}` | Ignition prompt run parameter / approved finance source | Update per campaign run. Do not reuse prior campaign MDR. |
-| Campaign Total Cost (RM) | `= {{CPAM_COST_RM}} + {{CAMPAIGN_DIRECT_COST_RM}}` | Derived | Keep as formula logic. |
-| Campaign Direct Cost (RM) | `= ({{CAMPAIGN_TPV_RM}} * {{AVG_RELOAD_COST_PCT}}) + ({{CAMPAIGN_TXN_COUNT}} * {{AVG_CLOUD_COST_PER_TXN_RM}}) + ({{CAMPAIGN_TXN_COUNT}} * {{AVG_PLSA_COST_PER_TXN_RM}})` | Derived | Keep as formula logic. |
-| Avg Reload Cost % | `{{AVG_RELOAD_COST_PCT}}` | Finance source | Mark unresolved if missing. |
-| Avg Cloud Cost / Txn (RM) | `{{AVG_CLOUD_COST_PER_TXN_RM}}` | Finance source | Mark unresolved if missing. |
-| Avg PLSA Cost / Txn (RM) | `{{AVG_PLSA_COST_PER_TXN_RM}}` | Finance source | Mark unresolved if missing. |
-| Gross Profit (RM) | `= {{CAMPAIGN_REVENUE_RM}} - {{CAMPAIGN_TOTAL_COST_RM}}` | Derived | Keep as formula logic. |
-| % ROI (GP / CPAM Cost) | `= {{GROSS_PROFIT_RM}} / {{CPAM_COST_RM}}` | Derived | Keep as formula logic. |
+| Generic Field | Placeholder / Formula | Source | Rule | Phase |
+|---|---|---|---|---|
+| Campaign Revenue (RM) | `= {{CAMPAIGN_TPV_RM}} * {{MDR_RATE}}` | Derived | Keep as formula logic. | Phase 1 (formula depends on Phase 1 inputs) |
+| MDR | `{{MDR_RATE}}` | Ignition prompt run parameter / approved finance source | Update per campaign run. Do not reuse prior campaign MDR. | Phase 1 |
+| Campaign Total Cost (RM) | `= {{CPAM_COST_RM}} + {{CAMPAIGN_DIRECT_COST_RM}}` | Derived | Keep as formula logic. | Phase 2 (formula depends on Phase 2 cost inputs) |
+| Campaign Direct Cost (RM) | `= ({{CAMPAIGN_TPV_RM}} * {{AVG_RELOAD_COST_PCT}}) + ({{CAMPAIGN_TXN_COUNT}} * {{AVG_CLOUD_COST_PER_TXN_RM}}) + ({{CAMPAIGN_TXN_COUNT}} * {{AVG_PLSA_COST_PER_TXN_RM}})` | Derived | Keep as formula logic. | Phase 2 (formula depends on Phase 2 rate inputs) |
+| Avg Reload Cost % | `{{AVG_RELOAD_COST_PCT}}` | Finance source | Mark `PENDING_HUMAN_VALIDATION` in Phase 1. | Phase 2 |
+| Avg Cloud Cost / Txn (RM) | `{{AVG_CLOUD_COST_PER_TXN_RM}}` | Finance source | Mark `PENDING_HUMAN_VALIDATION` in Phase 1. | Phase 2 |
+| Avg PLSA Cost / Txn (RM) | `{{AVG_PLSA_COST_PER_TXN_RM}}` | Finance source | Mark `PENDING_HUMAN_VALIDATION` in Phase 1. | Phase 2 |
+| Gross Profit (RM) | `= {{CAMPAIGN_REVENUE_RM}} - {{CAMPAIGN_TOTAL_COST_RM}}` | Derived | Keep as formula logic. | Phase 2 (formula depends on Phase 2 total cost) |
+| % ROI (GP / CPAM Cost) | `= {{GROSS_PROFIT_RM}} / {{CPAM_COST_RM}}` | Derived | Keep as formula logic. | Phase 2 (formula depends on Phase 2 gross profit) |
 
 ## Section E: Template Rule - Traffic Light (MDR%)
 The workbook contains a template rule tied to MDR.
 
-| Generic Field | Placeholder / Formula | Source | Rule |
-|---|---|---|---|
-| Traffic Light (MDR%) | `{{TRAFFIC_LIGHT_STATUS}}` or formula-driven cell | Derived from `{{MDR_RATE}}` | Keep formula if template calculates it. |
-| Traffic Light Rule | `Green / Yellow / Red` | Derived from `{{MDR_RATE}}` | Green if MDR >= 0.47%; Yellow if MDR >= 0.18% and < 0.47%; Red if MDR < 0.18%. |
+| Generic Field | Placeholder / Formula | Source | Rule | Phase |
+|---|---|---|---|---|
+| Traffic Light (MDR%) | `{{TRAFFIC_LIGHT_STATUS}}` or formula-driven cell | Derived from `{{MDR_RATE}}` | Keep formula if template calculates it. | Phase 1 |
+| Traffic Light Rule | `Green / Yellow / Red` | Derived from `{{MDR_RATE}}` | Green if MDR >= 0.47%; Yellow if MDR >= 0.18% and < 0.47%; Red if MDR < 0.18%. | Phase 1 |
 
 ## Section F: Merchant-Level Impact Analysis
 
-| Generic Field | Placeholder | Source | Rule |
-|---|---|---|---|
-| Pre-Campaign Monthly TPV | `{{PRE_CAMPAIGN_MONTHLY_TPV}}` | BI / internal | Current campaign merchant only. |
-| During-Campaign Monthly TPV | `{{DURING_CAMPAIGN_MONTHLY_TPV}}` | BI / internal | Same rule. |
-| Post 1M Monthly TPV | `{{POST_1M_MONTHLY_TPV}}` | BI / internal | Same rule. |
-| Post 2M Monthly TPV | `{{POST_2M_MONTHLY_TPV}}` | BI / internal | Same rule. |
-| Post 3M Monthly TPV | `{{POST_3M_MONTHLY_TPV}}` | BI / internal | Same rule. |
-| Post 6M Monthly TPV | `{{POST_6M_MONTHLY_TPV}}` | BI / internal | Same rule. |
-| Monthly MTU values | `{{PRE_DURING_POST_MTU_VALUES}}` | BI / internal | Use normalized month-level MTU values if required by template. |
-| TPV Pre vs During Summary | `{{TPV_PRE_VS_DURING_SUMMARY}}` | Derived narrative | Human-readable output based on current campaign data only. |
-| TPV Pre vs Post 3M Summary | `{{TPV_PRE_VS_POST3M_SUMMARY}}` | Derived narrative | Human-readable output based on current campaign data only. |
-| Proceed to 2nd Review | `{{SECOND_REVIEW_DECISION}}` | Business rule | Follow current template rule only. |
-| CPAM Cost / User | `= {{CPAM_COST_RM}} / {{CAMPAIGN_PARTICIPANTS}}` | Derived | Keep as formula logic. |
-| Est. 12M CLTV | `{{EST_12M_CLTV}}` | BI manual pull | Mark `MANUAL_INPUT_REQUIRED` if unavailable. |
+| Generic Field | Placeholder | Source | Rule | Phase |
+|---|---|---|---|---|
+| Pre-Campaign Monthly TPV | `{{PRE_CAMPAIGN_MONTHLY_TPV}}` | BI / internal | Current campaign merchant only. Mark `PENDING_HUMAN_VALIDATION` in Phase 1. | Phase 2 |
+| During-Campaign Monthly TPV | `{{DURING_CAMPAIGN_MONTHLY_TPV}}` | BI / internal | Same rule. | Phase 2 |
+| Post 1M Monthly TPV | `{{POST_1M_MONTHLY_TPV}}` | BI / internal | Same rule. | Phase 2 |
+| Post 2M Monthly TPV | `{{POST_2M_MONTHLY_TPV}}` | BI / internal | Same rule. | Phase 2 |
+| Post 3M Monthly TPV | `{{POST_3M_MONTHLY_TPV}}` | BI / internal | Same rule. | Phase 2 |
+| Post 6M Monthly TPV | `{{POST_6M_MONTHLY_TPV}}` | BI / internal | Same rule. | Phase 2 |
+| Monthly MTU values | `{{PRE_DURING_POST_MTU_VALUES}}` | BI / internal | Use normalized month-level MTU values if required by template. Mark `PENDING_HUMAN_VALIDATION` in Phase 1. | Phase 2 |
+| TPV Pre vs During Summary | `{{TPV_PRE_VS_DURING_SUMMARY}}` | Derived narrative | Human-readable output based on current campaign data only. | Phase 2 |
+| TPV Pre vs Post 3M Summary | `{{TPV_PRE_VS_POST3M_SUMMARY}}` | Derived narrative | Human-readable output based on current campaign data only. | Phase 2 |
+| Proceed to 2nd Review | `{{SECOND_REVIEW_DECISION}}` | Business rule | Follow current template rule only. Mark `PENDING_HUMAN_VALIDATION` in Phase 1. | Phase 2 |
+| CPAM Cost / User | `= {{CPAM_COST_RM}} / {{CAMPAIGN_PARTICIPANTS}}` | Derived | Keep as formula logic. | Phase 1 (formula; resolves if CPAM Cost is available from partner file) |
+| Est. 12M CLTV | `{{EST_12M_CLTV}}` | BI manual pull | Mark `PENDING_HUMAN_VALIDATION` in Phase 1. | Phase 2 |
 
 ---
 

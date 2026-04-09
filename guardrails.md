@@ -20,15 +20,41 @@ If two sources disagree:
 - Preserve the conflicting value in a **Validation Note**.
 - Never silently overwrite a discrepancy.
 
+## Phase Boundary Rule
+
+The engine operates in two distinct phases. The AI executes Phase 1 only.
+
+### Phase 1 — AI-Only Fields
+The AI populates these fields during a Phase 1 run:
+- Campaign identity fields from the RFA (name, ID, dates, mechanics, amount, funding mechanism, cost centre)
+- Partner-derived KPIs extracted from CHARGE rows (campaign participants, TPV, transaction count) — labeled as provisional
+- MDR rate (from ignition prompt)
+- CPAM Cost (from partner file if present; otherwise `PENDING_HUMAN_VALIDATION`)
+- Traffic-light classification (derived from MDR)
+
+### Phase 2 — Human-Only Fields
+A team member completes these fields after receiving the Phase 1 output:
+- Internal KPI reconciliation (internal TPV, internal participants, internal transaction count, all variance cells)
+- All retention cells (post-month 1 through 12)
+- All finance cost-rate inputs (Avg Reload Cost %, Avg Cloud Cost/Txn, Avg PLSA Cost/Txn)
+- Merchant-impact TPV series, MTU series, and growth values
+- CLTV (Est. 12M CLTV)
+- Second-review decision
+- Any field that depends on internal database records, BI pulls, or finance rate workbooks
+
+### AI Behavior at the Phase Boundary
+- The AI must **never** substitute estimated values for Phase 2 fields.
+- Use `PENDING_HUMAN_VALIDATION` instead of `DATA_NOT_FOUND` for Phase 2 fields specifically. This signals to the human reviewer that the field is expected to be filled — not that the data is permanently unavailable.
+- Do not treat absent Phase 2 files as blocking errors. Only the RFA and partner raw data file are required for Phase 1.
+
 ## 2. Mandatory Stop / Flag Conditions
 Return `DATA_NOT_FOUND` or `MANUAL_REVIEW_REQUIRED` when any of the following apply:
 - RFA status is not explicitly **Approved**.
-- A required source file is missing.
+- A Phase 1 required source file is missing (RFA or partner raw data file). If either Phase 1 file is absent, stop and return `MANUAL_REVIEW_REQUIRED`. Phase 2 files (internal TXN data, retention data, finance rate files) are not blocking — mark their dependent cells `PENDING_HUMAN_VALIDATION` and continue.
 - Campaign dates in source files do not align and no BU override is provided.
 - Funding mechanism conflicts across trusted sources and no BU confirmation is provided.
-- Required finance rates are unavailable.
 - MDR is required but missing from both the prompt run configuration and any approved supporting source.
-- Template logic depends on an external workbook that has not been uploaded.
+- Template logic depends on an external Phase 1 workbook that has not been uploaded.
 
 ## 3. Transaction Handling Rules
 - Default campaign KPI extraction to **successful campaign charges only** unless finance explicitly requests net-of-refund reporting.

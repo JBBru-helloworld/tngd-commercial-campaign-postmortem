@@ -3,6 +3,16 @@
 ## Purpose
 These instructions define a **reusable engine** for any campaign post-mortem using the uploaded `campaign_file_TEMPLATE.xlsx` workbook and the static engine files.
 
+## Two-Phase Execution Model
+
+The engine operates in two phases. The AI executes **Phase 1 only**.
+
+**Phase 1 — AI Run:** The AI reads the RFA file and partner raw data file, populates all campaign identity fields (from RFA), provisional KPI fields (from partner CHARGE rows), the MDR rate (from the ignition prompt), and the traffic-light classification. All other fields are marked `PENDING_HUMAN_VALIDATION`.
+
+**Phase 2 — Human Validation:** After receiving the Phase 1 output Excel file, a team member validates the partner file against internal database records and populates: internal KPI reconciliation, all retention data, all finance cost rates, merchant-impact data, CLTV, and the second-review decision.
+
+**AI Boundary Rule:** The AI must never block, error, or stop because internal data, retention files, finance files, or BI files are absent. Mark Phase 2 cells `PENDING_HUMAN_VALIDATION` and continue.
+
 ## Step 0: Read the Static Engine Sources First
 Before processing any campaign-specific uploads:
 - open the current master workbook
@@ -33,7 +43,7 @@ Rules:
 - do not infer MDR from prior campaigns
 - if MDR is missing from the prompt and not supplied by an approved source file, mark it `MANUAL_INPUT_REQUIRED`
 
-## Step 2: Parse the Approved RFA (Sage)
+## Step 2: Parse the Approved RFA (Sage) [Phase 1 Step]
 Extract generic campaign metadata into placeholders such as:
 - `{{CAMPAIGN_NAME}}`
 - `{{APPROVED_RFA_NO}}`
@@ -52,7 +62,7 @@ Rules:
 - keep campaign naming campaign-specific at execution time
 - preserve mechanics wording closely enough for business review
 
-## Step 3: Standardize the Partner Raw File
+## Step 3: Standardize the Partner Raw File [Phase 1 Step]
 Normalize partner/raw exports into canonical fields:
 - `transaction_type`
 - `campaign_id`
@@ -77,7 +87,9 @@ Then:
    - `{{REFUND_TPV_RM}}`
    - `{{REFUND_INCENTIVE_RM}}`
 
-## Step 4: Reconcile Against Internal Data
+## Step 4: Reconcile Against Internal Data [Phase 2 Step]
+**This is a Phase 2 step. The AI must skip population of these cells and mark them `PENDING_HUMAN_VALIDATION`. Do not flag this as an error.**
+
 If internal transaction files are uploaded:
 - recalculate TPV, participants, and transactions from internal data
 - compare them against partner/raw totals
@@ -88,7 +100,9 @@ If internal files are **not** uploaded:
 - set internal verification fields to `DATA_NOT_FOUND`
 - write a validation note that independent reconciliation could not be performed
 
-## Step 5: Retention Logic
+## Step 5: Retention Logic [Phase 2 Step]
+**This is a Phase 2 step. The AI must skip population of these cells and mark them `PENDING_HUMAN_VALIDATION`. Do not flag this as an error.**
+
 Retention rows require an uploaded retention source.
 
 For each retention month required by the template:
@@ -100,7 +114,9 @@ If retention source is missing:
 - set all retention outputs to `DATA_NOT_FOUND`
 - do not backsolve from assumptions in the RFA
 
-## Step 6: Revenue, MDR, and Cost Inputs
+## Step 6: Revenue, MDR, and Cost Inputs [Partially Phase 2]
+**MDR (`{{MDR_RATE}}`) and CPAM Cost (`{{CPAM_COST_RM}}`) are Phase 1 fields — populate from the ignition prompt and partner file respectively. All finance cost-rate inputs (`{{AVG_RELOAD_COST_PCT}}`, `{{AVG_CLOUD_COST_PER_TXN_RM}}`, `{{AVG_PLSA_COST_PER_TXN_RM}}`) are Phase 2 steps. The AI must mark those cells `PENDING_HUMAN_VALIDATION`. Do not flag this as an error.**
+
 Populate or confirm:
 - `{{MDR_RATE}}`
 - `{{CPAM_COST_RM}}`

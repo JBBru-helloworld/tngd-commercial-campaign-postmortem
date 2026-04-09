@@ -26,14 +26,14 @@ These values must be updated for each campaign run.
 - MDR percentage for this run: `[UPDATE_MDR_PERCENTAGE]`
 - MDR source / approver note, if applicable: `[UPDATE_MDR_SOURCE_OR_NOTE]`
 
-### C. Campaign-Specific Files for This Run
+### C. Campaign-Specific Files for This Run (Phase 1 Required + Phase 2 Optional)
 These are the uploaded files that will change every time this prompt is used.
 
-- RFA / Sage approval file: `[UPDATE_FILENAME_RFA_FILE]`
-- Internal validation / transaction data file(s): `[UPDATE_FILENAME_INTERNAL_VALIDATION_FILE_OR_FILES]`
-- Partner raw data file(s): `[UPDATE_FILENAME_PARTNER_RAW_FILE_OR_FILES]`
-- Internal retention data file(s), if provided: `[UPDATE_FILENAME_RETENTION_FILE_OR_FILES]`
-- Finance rate / cost input file(s), if provided: `[UPDATE_FILENAME_FINANCE_FILE_OR_FILES]`
+- RFA / Sage approval file: `[UPDATE_FILENAME_RFA_FILE]` — **[REQUIRED — Phase 1]**
+- Partner raw data file(s): `[UPDATE_FILENAME_PARTNER_RAW_FILE_OR_FILES]` — **[REQUIRED — Phase 1]**
+- Internal validation / transaction data file(s): `[UPDATE_FILENAME_INTERNAL_VALIDATION_FILE_OR_FILES]` — **[OPTIONAL — Phase 2, human-completed]**
+- Internal retention data file(s), if provided: `[UPDATE_FILENAME_RETENTION_FILE_OR_FILES]` — **[OPTIONAL — Phase 2, human-completed]**
+- Finance rate / cost input file(s), if provided: `[UPDATE_FILENAME_FINANCE_FILE_OR_FILES]` — **[OPTIONAL — Phase 2, human-completed]**
 
 ---
 
@@ -82,12 +82,14 @@ Rules:
 ### Step 3 — Read the campaign-specific uploaded files
 After the static engine sources and manual inputs are fully read, read the campaign-specific uploaded files listed in Section C above.
 
-At minimum, process these files in this priority order:
-1. RFA / Sage approval file
-2. Internal validation / transaction data file(s)
-3. Partner raw data file(s)
-4. Retention data file(s), if available
-5. Finance rate / cost file(s), if available
+**Only the RFA and partner raw file are required for Phase 1.** If Phase 2 files (internal validation data, retention data, finance rate files) are not uploaded, do not treat this as a blocking error. Mark all cells that depend on Phase 2 files `PENDING_HUMAN_VALIDATION` and continue the Phase 1 run.
+
+Process uploaded files in this priority order:
+1. RFA / Sage approval file — **[REQUIRED — Phase 1]**
+2. Partner raw data file(s) — **[REQUIRED — Phase 1]**
+3. Internal validation / transaction data file(s) — [OPTIONAL — Phase 2, human-completed]
+4. Retention data file(s), if available — [OPTIONAL — Phase 2, human-completed]
+5. Finance rate / cost file(s), if available — [OPTIONAL — Phase 2, human-completed]
 
 ### Step 4 — Apply the engine rules
 When processing the campaign files:
@@ -112,14 +114,14 @@ When processing the campaign files:
 ### Step 5 — Produce the final outputs
 Your output must be exactly **2 things only**:
 
-#### Output 1 — Completed Excel file
-Create and return the **full completed Excel file** populated for this campaign.
+#### Output 1 — Partially completed Excel file (Phase 1 output)
+Create and return the **partially completed Excel file** for this campaign, ready for Phase 2 human validation.
 
 Requirements:
+- Phase 1 sections must be fully populated: campaign identity block (from RFA), provisional partner KPIs (from CHARGE rows), MDR rate (from ignition prompt), and traffic-light classification
+- All Phase 2 sections must be clearly marked `PENDING_HUMAN_VALIDATION` for the human reviewer
 - it must match the master template design exactly
 - it must preserve the same formatting, colours, formulas, structure, and worksheet design
-- it must be the completed workbook output for the current campaign
-- it must reflect all populated fields that can be determined from the provided files and prompt inputs
 - it must preserve formula-driven cells wherever the template requires formulas to remain intact
 
 #### Output 2 — Summary in chat
