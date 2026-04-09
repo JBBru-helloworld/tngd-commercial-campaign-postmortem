@@ -224,154 +224,266 @@ This section gives the AI step-by-step Python/openpyxl instructions for reading 
 
 ### Required Library
 
-```
-Use the openpyxl library exclusively for reading and writing the Excel template.
-Do not use xlrd, xlwt, xlsxwriter, or pandas to_excel for the final output file.
-Install with: pip install openpyxl
-```
+Use `openpyxl` exclusively for reading and writing the Excel template.
+Do not use `xlrd`, `xlwt`, `xlsxwriter`, or `pandas.to_excel` for the output file.
+Install with: `pip install openpyxl`
 
-### How to Open the Template
+---
+
+### How to Open the Template — Mandatory Flags
+
+Always open the template with exactly these flags. No exceptions.
 
 ```python
 import openpyxl
 
-wb = openpyxl.load_workbook("campaign_file_TEMPLATE.xlsx")
-
-# The only sheet you need to populate is the Campaign Template sheet.
-# Access it by name:
+wb = openpyxl.load_workbook(template_path, keep_vba=False, data_only=False)
 ws = wb["Campaign Template"]
-
-# Do not access, modify, or delete any other sheet.
-# If other sheets do not exist in the file, that is acceptable — work only with Campaign Template.
 ```
 
-### How to Read Existing Cell Values Before Writing
+`data_only=False` is critical. Without it, openpyxl replaces all formula strings with None,
+silently wiping every formula cell before any writes occur.
+
+Do not access, modify, or delete any other sheet. Only interact with "Campaign Template."
+
+---
+
+### ABSOLUTE PROHIBITION — artifact_tool
+
+The following methods are strictly forbidden and must never appear anywhere in the script:
+
+```
+SpreadsheetArtifact
+artifact_tool
+artifact.recalculate()
+artifact.export()
+artifact.render()
+```
+
+These are ChatGPT internal rendering tools. When called after `wb.save()`, they overwrite the
+saved file with an internal format that strips all formatting, merged cells, colours, and
+content. The downloaded file will be blank. There are no exceptions to this rule.
+
+After `wb.save()`, the script must stop. No further file operations are permitted.
+
+---
+
+### ABSOLUTE PROHIBITION — Sheet Deletion
+
+Never delete any sheet from the workbook. The following pattern is forbidden:
 
 ```python
-# Before writing any value, read the cell to check if it contains a formula.
-# Cells that begin with "=" are formula cells and must NEVER be overwritten.
-
-def is_formula(cell):
-    val = cell.value
-    return isinstance(val, str) and val.startswith("=")
-
-# Example check before writing:
-cell = ws["C14"]
-if not is_formula(cell):
-    ws["C14"] = your_value
-else:
-    # Leave the cell alone. Log it as a preserved formula cell.
-    pass
+# FORBIDDEN — do not do this
+for s in wb.sheetnames[:]:
+    if s != 'Campaign Template':
+        del wb[s]
 ```
+
+Deleting sheets breaks any cross-sheet formula references in Campaign Template, turning them
+into `#REF!` errors. Keep all sheets intact. Only write to "Campaign Template."
+
+---
+
+### ABSOLUTE PROHIBITION — Formatting Modifications
+
+Never set any of the following on any cell:
+
+```
+fill / PatternFill / fgColor
+font / Font
+border / Border
+number_format
+alignment
+```
+
+The template already contains all visual formatting. Writing any formatting property overwrites
+the existing template styles and corrupts the output. Your only job is to write values into
+the correct cells. Do not import or use `PatternFill`, `Font`, `Border`, or any openpyxl
+styles module.
+
+---
 
 ### How to Handle Merged Cells
 
+Every input row in the Campaign Template is a merged cell range (e.g. C2:H2, C9:H10).
+openpyxl raises a silent error when you write to any cell inside a merged range that is not
+the top-left anchor cell. The value will not be written.
+
+Always write to the top-left anchor cell only. The anchor cell address for each field is
+defined in the Cell-to-Source Mapping. Use those addresses exactly as listed.
+
+Use this helper before every write to confirm the cell is safe to write to:
+
 ```python
-# Many cells in the template are merged (e.g., C2:H2).
-# When writing to a merged range, always write to the TOP-LEFT cell of the merged range only.
-# Do not iterate over the full merge range — openpyxl will raise an error if you write to a non-anchor merged cell.
-
-# Example: to write the Campaign Name into C2:H2, write only to C2.
-ws["C2"] = "My Campaign Name"
-
-# To confirm a cell is the anchor of a merge, you can inspect merged_cells:
-for merged_range in ws.merged_cells.ranges:
-    print(merged_range)  # e.g., C2:H2
+def is_merged_non_anchor(ws, cell_ref):
+    from openpyxl.utils import coordinate_to_tuple
+    row, col = coordinate_to_tuple(cell_ref)
+    for merged in ws.merged_cells.ranges:
+        if (merged.min_row <= row <= merged.max_row and
+                merged.min_col <= col <= merged.max_col):
+            if row != merged.min_row or col != merged.min_col:
+                return True
+    return False
 ```
 
-### Cell-by-Cell Write Instructions for Phase 1
+If `is_merged_non_anchor` returns True for a cell reference, skip it and log a warning.
+This should not happen if you are using the anchor addresses from the mapping, but use this
+check as a safety net.
 
-Write ONLY the following cells during a Phase 1 run. Reference the exact cell addresses from the Cell-to-Source Mapping. For each cell, apply the formula-check from the section above before writing.
+---
+
+### How to Protect Formula Cells
+
+Before writing any value, check whether the cell already contains a formula. Formula cells
+must never be overwritten.
+
+```python
+def is_formula(cell):
+    return isinstance(cell.value, str) and cell.value.startswith("=")
+
+def safe_write(ws, cell_ref, value):
+    cell = ws[cell_ref]
+    if is_formula(cell):
+        return False  # skip, log as preserved formula
+    if is_merged_non_anchor(ws, cell_ref):
+        return False  # skip, log as non-anchor merged cell
+    cell.value = value
+    return True
+```
+
+The following cells are known formula cells in this template. Never pass them to `safe_write`:
 
 ```
-PHASE 1 WRITE TARGETS — Campaign Template sheet only:
+C21  — Campaign Revenue (RM)         formula: TPV x MDR
+C23  — Campaign Total Cost (RM)      formula: CPAM Cost + Direct Cost
+C25  — Campaign Direct Cost (RM)     formula: TPV/Txn-based cost rates
+C29  — Gross Profit (RM)             formula: Revenue minus Total Cost
+C30  — % ROI (GP / CPAM Cost)        formula: GP / CPAM Cost
+C38  — Usecases / Traffic Light      formula: derived from MDR rate
+C42  — CPAM Cost / User (RM)         formula: CPAM Cost / Participants
+```
 
+---
+
+### MDR Write Rule
+
+The MDR cell (C22) has a percentage number format already applied in the template.
+Always write MDR as a plain decimal number. Never write it as a string.
+
+```python
+# CORRECT
+safe_write(ws, "C22", 0.013)   # displays as 1.30% due to cell format
+
+# FORBIDDEN
+safe_write(ws, "C22", "1.30%")  # breaks the formula that depends on this cell
+safe_write(ws, "C22", 1.3)      # wrong scale — displays as 130%
+```
+
+---
+
+### Phase 1 Write Targets — Complete Cell List
+
+Write only the following cells during a Phase 1 run. Use `safe_write` for every cell.
+
+```
 General Info block:
-  C2  — CAMPAIGN_NAME          (string, from RFA)
-  C3  — RFA_ID                 (string, from RFA, only if Approved)
-  C4  — PARTNER_NAME           (string, from RFA)
-  C5  — CAMPAIGN_TYPE          (string, from RFA or MANUAL_INPUT_REQUIRED)
-  C7  — CAMPAIGN_START_DATE    (date string, from RFA)
-  F7  — CAMPAIGN_END_DATE      (date string, from RFA)
-  C8  — FUNDING_MECHANISM      (string, from RFA)
-  C9  — MECHANIC_PRIMARY       (string, from RFA)
-  C11 — MECHANIC_SECONDARY     (string, from RFA or blank)
-  C12 — RFA_AMOUNT_RM          (number, from RFA)
-  C13 — COST_CENTRE            (string, from RFA)
+  C2   CAMPAIGN_NAME           string    from RFA
+  C3   RFA_ID                  string    from RFA, only if status is Approved
+  C4   PARTNER_NAME            string    from RFA
+  C5   CAMPAIGN_TYPE           string    from RFA or write MANUAL_INPUT_REQUIRED
+  C7   CAMPAIGN_START_DATE     string    from RFA, format DD/MM/YYYY
+  F7   CAMPAIGN_END_DATE       string    from RFA, format DD/MM/YYYY
+  C8   FUNDING_MECHANISM       string    from RFA or write MANUAL_INPUT_REQUIRED
+  C9   MECHANIC_PRIMARY        string    from RFA
+  C11  MECHANIC_SECONDARY      string    from RFA or leave blank
+  C12  RFA_AMOUNT_RM           number    from RFA
+  C13  COST_CENTRE             string    from RFA
 
 Core KPIs block (partner-derived, provisional):
-  C14 — CAMPAIGN_PARTICIPANTS  (integer, from partner CHARGE rows)
-  C15 — CAMPAIGN_TPV_RM        (number, from partner CHARGE rows)
-  C16 — CAMPAIGN_TXN_COUNT     (integer, from partner CHARGE rows)
+  C14  CAMPAIGN_PARTICIPANTS   integer   distinct users on CHARGE rows
+  C15  CAMPAIGN_TPV_RM         number    sum of transaction_amount on CHARGE rows
+  C16  CAMPAIGN_TXN_COUNT      integer   distinct transactions on CHARGE rows
 
-MDR and Revenue:
-  C22 — MDR_RATE               (decimal, e.g. 0.0047 for 0.47%, from ignition prompt)
-  C24 — CPAM_COST_RM           (number, from partner file if available, else PENDING_HUMAN_VALIDATION)
+MDR and cost:
+  C22  MDR_RATE                decimal   from ignition prompt, e.g. 0.013 for 1.3%
+  C24  CPAM_COST_RM            number    sum of benefit_amount on CHARGE rows
+                                         if unavailable write PENDING_HUMAN_VALIDATION
 
-Phase 2 placeholder writes — write the string "PENDING_HUMAN_VALIDATION" to these cells:
-  C18, D18, E18, F18, G18, H18  — Retention Post 1M–6M
-  C20, D20, E20, F20, G20, H20  — Retention Post 7M–12M
-  C26  — AVG_RELOAD_PCT
-  C27  — AVG_CLOUD_COST_RM
-  C28  — AVG_PLSA_COST_RM
-  C34, D34, E34, F34, G34, H34  — Merchant TPV values
-  C35, D35, E35, F35, G35, H35  — Merchant TPV growth values
-  C37, D37, E37, F37, G37, H37  — MTU values
-  C43  — EST_12M_CLTV
-  C41  — SECOND_REVIEW_DECISION
+Phase 2 placeholder writes — write the exact string PENDING_HUMAN_VALIDATION:
+  C18 D18 E18 F18 G18 H18     Retention Post 1M to 6M
+  C20 D20 E20 F20 G20 H20     Retention Post 7M to 12M
+  C26                          Avg Reload Cost %
+  C27                          Avg Cloud Cost / Txn (RM)
+  C28                          Avg PLSA Cost / Txn (RM)
+  C32 D32 E32 F32 G32 H32     Merchant TPV display row
+  C33 D33 E33 F33 G33 H33     Merchant TPV growth display row
+  C34 D34 E34 F34 G34 H34     Merchant TPV value row
+  C35 D35 E35 F35 G35 H35     Merchant TPV growth value row
+  C36 D36 E36 F36 G36 H36     Merchant TPV growth % row
+  C37 D37 E37 F37 G37 H37     Monthly MTU row
+  C39                          TPV Pre vs During summary
+  C40                          TPV Pre vs Post 3M summary
+  C41                          Proceed to 2nd Review decision
+  C43                          Est. 12M CLTV
 
 Do not write to any KEEP_FORMULA cells:
   C21, C23, C25, C29, C30, C38, C42
   (and any other cell that begins with "=" when read)
 ```
 
+---
+
 ### How to Save the Output File
 
 ```python
-# Always save to a new file. Never overwrite the original template.
-output_filename = "campaign_postmortem_[CAMPAIGN_NAME]_phase1.xlsx"
-wb.save(output_filename)
-print(f"Saved: {output_filename}")
+output_path = f"campaign_postmortem_{campaign_name}_phase1.xlsx"
+wb.save(output_path)
+print("Saved:", output_path)
 ```
+
+Save once. To a new filename. Never overwrite the original template.
+No further steps after `wb.save()`. Do not call any render, recalculate, or export method.
+
+---
 
 ### Error Handling Rules
 
 ```
-1. If openpyxl cannot open the template file, stop immediately and return:
-   "ERROR: Template file could not be opened. Confirm the file name matches exactly
+1. If openpyxl cannot open the template:
+   Stop and return:
+   "ERROR: Template file could not be opened. Confirm the filename is exact
    and the file is a valid .xlsx format."
 
-2. If the "Campaign Template" sheet is not found in the workbook:
-   - List all available sheet names using wb.sheetnames.
-   - Return: "ERROR: Sheet 'Campaign Template' not found. Available sheets: [list].
-     Please confirm the correct sheet name and update the cell-to-source mapping."
-   - Do not attempt to infer or guess the sheet name.
+2. If the sheet "Campaign Template" is not found:
+   Print wb.sheetnames and return:
+   "ERROR: Sheet 'Campaign Template' not found. Available sheets: [list].
+   Confirm the sheet name and update the cell-to-source mapping."
+   Do not guess or infer the sheet name.
 
-3. If a write operation fails on a specific cell:
-   - Log the cell address and the error.
-   - Skip that cell and continue with the remaining cells.
-   - Include all failed cells in the chat summary under "Write Errors."
+3. If a write fails on a specific cell:
+   Log the cell address and error message.
+   Skip that cell and continue with all remaining cells.
+   Include all failed cells in the chat summary under "Write Errors."
 
-4. If a merged cell conflict occurs (writing to a non-anchor cell):
-   - Identify the top-left anchor of the merged range.
-   - Retry the write to the anchor cell only.
-   - Log the correction in the chat summary.
+4. If a merged cell conflict is detected:
+   Identify the top-left anchor of the merged range.
+   Retry the write to the anchor cell only.
+   Log the correction in the chat summary.
 
 5. Never raise an unhandled exception that stops the entire run.
-   Always complete the save step and produce the output file even if some cells failed to write.
+   Always reach wb.save() and produce an output file even if individual cell
+   writes fail. A partial output is better than no output.
 ```
 
-### Scope Restriction — Other Tabs
+---
 
-```
-The AI engine must only interact with the "Campaign Template" sheet.
+### Scope Restriction
 
-Do not read from, write to, or modify any other sheet in the workbook
-(e.g., "Source File Template", helper tabs, or any embedded engine tabs).
+The AI engine interacts only with the "Campaign Template" sheet.
 
-If the template references other sheets in its formulas (e.g., =SourceFileTemplate!R12),
-leave those formulas intact and do not attempt to populate the referenced cells in those
-other sheets. The human validator will manage cross-sheet references in Phase 2.
+Do not read from, write to, or delete any other sheet.
 
-This restriction simplifies Phase 1 execution and prevents accidental corruption of helper sheets.
-```
+If Campaign Template contains formulas that reference other sheets
+(e.g. =SourceFileTemplate!R12), leave those formulas exactly as-is.
+Do not attempt to populate the referenced cells in other sheets.
+The human validator manages cross-sheet references in Phase 2.

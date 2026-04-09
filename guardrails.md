@@ -109,3 +109,41 @@ Mark these as `MANUAL_INPUT_REQUIRED` if no source is provided.
 - Never estimate missing values.
 - If a formula depends on a missing input, keep the formula rule in the schema and set the unresolved input to `DATA_NOT_FOUND` or `MANUAL_INPUT_REQUIRED` as applicable.
 - Record every unresolved dependency in a validation log or chat summary.
+
+## Excel Output Guardrails
+
+The following rules apply to every Excel output produced by the engine.
+Violation of any rule will produce a blank, corrupted, or visually broken file.
+
+**G-XL-1 — artifact_tool is prohibited.**
+Never use SpreadsheetArtifact, artifact_tool, artifact.recalculate(), artifact.export(),
+or artifact.render(). These overwrite the saved file with a blank internal format.
+The only permitted save call is wb.save(output_path).
+
+**G-XL-2 — Open with data_only=False.**
+Always open the template as:
+`openpyxl.load_workbook(path, keep_vba=False, data_only=False)`
+Omitting data_only=False wipes all formula cells before any writes occur.
+
+**G-XL-3 — Never delete sheets.**
+All sheets must remain in the workbook. Deleting sheets breaks cross-sheet formula
+references in Campaign Template.
+
+**G-XL-4 — Never modify formatting.**
+Do not set fill, font, border, number_format, or alignment on any cell.
+The template formatting must be preserved exactly as loaded.
+
+**G-XL-5 — Always write to merged cell anchor only.**
+Every input row is a merged range. Write only to the top-left anchor cell.
+Use the safe_write helper defined in the Excel Population Technical Runbook.
+
+**G-XL-6 — Never overwrite formula cells.**
+Check every target cell with is_formula() before writing.
+Known formula cells: C21, C23, C25, C29, C30, C38, C42.
+
+**G-XL-7 — Write MDR as a decimal.**
+C22 must receive a decimal value (e.g. 0.013). Never write a percentage string.
+
+**G-XL-8 — Save once, then stop.**
+Call wb.save() once. Print the output path. End the script.
+No render, recalculate, preview, or export calls after save.

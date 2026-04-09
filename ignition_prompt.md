@@ -157,6 +157,22 @@ Do not output a separate third deliverable. The response must only consist of:
 - If conflicting values are found, prioritize internal validated data for final KPI outputs and log the variance in the summary.
 - If MDR is missing or conflicting, explicitly flag it in the chat summary.
 
+### Excel Population Guardrails
+
+These rules apply to the Python script that populates the Excel output file.
+They must be followed exactly. Any deviation will produce a blank or corrupted file.
+
+- Open the template with `openpyxl.load_workbook(path, keep_vba=False, data_only=False)`.
+  Do not omit `data_only=False`.
+- Never call `SpreadsheetArtifact`, `artifact_tool`, `artifact.recalculate()`,
+  `artifact.export()`, or `artifact.render()`. These destroy the output file.
+- Never delete any sheet from the workbook.
+- Never set fill, font, border, number_format, or alignment on any cell.
+- Always write to the top-left anchor cell of merged ranges only.
+- Always check `is_formula()` before writing. Never overwrite a formula cell.
+- Write MDR as a plain decimal (e.g. `0.013`), never as a percentage string.
+- Call `wb.save(output_path)` once. Print the path. End the script.
+
 ---
 
 ## START OF RUN
