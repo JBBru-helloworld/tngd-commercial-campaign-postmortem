@@ -5,7 +5,7 @@
 CAMPAIGN NAME:     [UPDATE — e.g. 241122 COE RM107.5K Trip.com Launch Campaign]
 MDR PERCENTAGE:    [UPDATE — e.g. 1.30%]
 RFA FILE NAME:     [UPDATE — e.g. RFA-230752_Tripcom.pdf]
-PARTNER CSV FILE:  [UPDATE — e.g. Trip AMA Nov 2024.csv]
+PARTNER DATA FILE: [UPDATE — e.g. Trip AMA Nov 2024.csv or Trip AMA Nov 2024.xlsx]
 
 > These are the only four things you need to change each run.
 > Everything below this line is fixed engine logic — do not edit it.
@@ -42,7 +42,7 @@ These values are read from the RUN CONFIGURATION block at the top of this prompt
 These are the uploaded files that will change every time this prompt is used.
 
 - RFA / Sage approval file: Read RFA file name from the RUN CONFIGURATION block at the top of this prompt. — **[REQUIRED — Phase 1]**
-- Partner raw data file(s): Read partner CSV file name from the RUN CONFIGURATION block at the top of this prompt. — **[REQUIRED — Phase 1]**
+- Partner raw data file(s): Read partner data file name from the RUN CONFIGURATION block at the top of this prompt. The file may be .csv, .xlsx, or .xls — detect the format from the file extension and read it with the appropriate method. If the extension is not .csv, .xlsx, or .xls, stop immediately and report under the ACCESS FAILURE RULE. — **[REQUIRED — Phase 1]**
 - Internal validation / transaction data file(s): `[UPDATE_FILENAME_INTERNAL_VALIDATION_FILE_OR_FILES]` — **[OPTIONAL — Phase 2, human-completed]**
 - Internal retention data file(s), if provided: `[UPDATE_FILENAME_RETENTION_FILE_OR_FILES]` — **[OPTIONAL — Phase 2, human-completed]**
 - Finance rate / cost input file(s), if provided: `[UPDATE_FILENAME_FINANCE_FILE_OR_FILES]` — **[OPTIONAL — Phase 2, human-completed]**

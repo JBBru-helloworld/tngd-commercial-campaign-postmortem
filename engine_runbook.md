@@ -241,6 +241,39 @@ artifact_tool, artifact.recalculate(), or artifact.export() anywhere in the scri
 
 ---
 
+## Partner Data File Ingestion
+
+PARTNER FILE FORMAT RULE:
+
+The partner data file may be provided in either of these formats:
+- CSV (.csv)
+- Excel (.xlsx or .xls)
+
+The engine must detect the file format from the file extension and read it
+accordingly:
+
+```python
+import pandas as pd
+import os
+
+partner_file = "<filename from RUN CONFIGURATION>"
+ext = os.path.splitext(partner_file)[1].lower()
+
+if ext == '.csv':
+    df = pd.read_csv(partner_file)
+elif ext in ['.xlsx', '.xls']:
+    df = pd.read_excel(partner_file)
+else:
+    raise ValueError(f"Unsupported partner file format: {ext}. "
+                     f"Accepted formats are .csv, .xlsx, .xls")
+```
+
+Do not assume the file is always CSV.
+Do not attempt to open an Excel file with pd.read_csv() or vice versa.
+If the extension is unrecognised, stop and report the error before proceeding.
+
+---
+
 ## Step 1 — Create the Workbook and Sheet
 
 ```python
@@ -295,6 +328,22 @@ row_heights = {
 for row, height in row_heights.items():
     ws.row_dimensions[row].height = height
 ```
+
+---
+
+## Step 3b — Set Hidden Rows
+
+The following rows must be hidden in the output file to match the original template.
+Apply this immediately after setting row heights.
+
+```python
+ws.row_dimensions[41].hidden = True
+ws.row_dimensions[43].hidden = True
+```
+
+Do not write any values into hidden rows as visible content.
+Row 41 (Proceed to 2nd Review) and Row 43 (Est. 12M CLTV) are present in the
+workbook structure but must not be visible to the end user.
 
 ---
 
@@ -813,9 +862,9 @@ phase2_cells = [
     'C36','D36','E36','F36','G36','H36',   # Merchant TPV growth %
     'C37','D37','E37','F37','G37','H37',   # Monthly MTU
     'C39','C40',                            # TPV narrative summaries
-    'C41',                                  # 2nd Review decision
-    'C43',                                  # Est. 12M CLTV
 ]
+# Note: C41 (Proceed to 2nd Review) and C43 (Est. 12M CLTV) are hidden rows.
+# Do not write PENDING_HUMAN_VALIDATION into hidden rows.
 for ref in phase2_cells:
     ws[ref] = PHV
 ```
@@ -842,11 +891,12 @@ Do not call SpreadsheetArtifact, artifact_tool, recalculate, export, or render.
 ## Step 12 — Error Handling
 
 ```
-1. If partner CSV cannot be read:
+1. If partner data file cannot be read:
    Stop and return:
-   "ERROR: Partner CSV file could not be read. Check filename and format."
+   "ERROR: Partner data file could not be read. Check filename and format.
+   Accepted formats: .csv, .xlsx, .xls"
 
-2. If CHARGE rows cannot be found in the partner CSV:
+2. If CHARGE rows cannot be found in the partner data file:
    Set participants, tpv, txn_count to 'PENDING_HUMAN_VALIDATION'
    Note this in the chat summary under "Data Warnings."
 

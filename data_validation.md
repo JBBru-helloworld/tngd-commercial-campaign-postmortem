@@ -34,6 +34,8 @@ Primary campaign KPIs must be based on successful campaign charges unless a fina
 - Campaign TPV = RM sum on CHARGE rows
 - Campaign Txn # = distinct CHARGE transactions
 
+The partner data file may be provided as .csv, .xlsx, or .xls. Detect the file format from the file extension and read it with the appropriate method (pd.read_csv for .csv; pd.read_excel for .xlsx or .xls). Do not assume the file is always CSV.
+
 In Phase 1, extract KPIs from the partner CHARGE rows only. These values are provisional and must be labeled as partner-derived provisional in the output. Internal verification against the database is a Phase 2 step and will be completed by the human reviewer.
 
 Refunds must be summarized separately and disclosed in the validation output.
