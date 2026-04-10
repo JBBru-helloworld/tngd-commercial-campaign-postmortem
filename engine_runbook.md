@@ -705,9 +705,10 @@ for col in ['C','D','E','F','G']:
 style(ws,'H37', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, align=ALIGN_CENTER,
       bdr=BORDER_ALL, num_fmt='#,##0.00,,')
 
-# ── ROW 38: Usecases / Traffic Light (yellow, red font, wrap) ──────
+# ── ROW 38: Usecases / Traffic Light (yellow, dynamic font colour) ──
+# Note: C38 font colour is applied in Step 10, after the MDR value is known.
+# Do NOT apply a static font colour here.
 style(ws,'B38', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, bdr=BORDER_ALL)
-style(ws,'C38', fill=FILL_YELLOW_LIGHT, fnt=FONT_14_RED, align=ALIGN_CENTER_WRAP, bdr=BORDER_ALL)
 for col in ['D','E','F','G','H']:
     style(ws, f'{col}38', fnt=FONT_14, bdr=BORDER_ALL)
 style(ws,'I38', fnt=FONT_11_RED)
@@ -773,6 +774,25 @@ ws['C16'] = txn_count             # integer — distinct transaction IDs on CHAR
 
 # MDR — write as plain decimal, e.g. 0.013 for 1.3%
 ws['C22'] = mdr_rate              # float   — from ignition prompt
+
+# ── C38 traffic-light font colour — applied here, after MDR is known ──
+# Determine colour from MDR value and apply dynamically. Never hardcode.
+if isinstance(mdr_rate, float):
+    if mdr_rate >= 0.0047:
+        tl_font_color = 'FF00B050'   # Green
+    elif mdr_rate >= 0.0018:
+        tl_font_color = 'FFFFC000'   # Yellow/Amber
+    else:
+        tl_font_color = 'FFFF0000'   # Red
+else:
+    tl_font_color = 'FFFF0000'       # Default red if MDR is missing
+
+style(ws, 'C38',
+    fill=FILL_YELLOW_LIGHT,
+    fnt=Font(name=FONT_NAME, size=14, bold=True, color=tl_font_color),
+    align=ALIGN_CENTER_WRAP,
+    bdr=BORDER_ALL
+)
 
 # CPAM Cost — from partner file benefit_amount sum, or PENDING_HUMAN_VALIDATION
 ws['C24'] = cpam_cost             # float or string 'PENDING_HUMAN_VALIDATION'
