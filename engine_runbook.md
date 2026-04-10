@@ -218,272 +218,646 @@ Do not produce a third deliverable.
 
 ---
 
-## Excel Population Technical Runbook
+## Excel Population Technical Runbook — Fresh Build
 
-This section gives the AI step-by-step Python/openpyxl instructions for reading the template file and writing the Phase 1 output.
+## Overview
 
-### Required Library
+The engine builds the output Excel file from scratch on every run. It does NOT open
+or modify the template file. It creates a new openpyxl Workbook, applies all
+formatting explicitly, writes all formulas as strings, then populates campaign values.
 
-Use `openpyxl` exclusively for reading and writing the Excel template.
-Do not use `xlrd`, `xlwt`, `xlsxwriter`, or `pandas.to_excel` for the output file.
+## Required Library
+
+```python
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+```
+
 Install with: `pip install openpyxl`
 
+Do not use xlrd, xlwt, xlsxwriter, pandas.to_excel, SpreadsheetArtifact,
+artifact_tool, artifact.recalculate(), or artifact.export() anywhere in the script.
+
 ---
 
-### How to Open the Template — Mandatory Flags
-
-Always open the template with exactly these flags. No exceptions.
+## Step 1 — Create the Workbook and Sheet
 
 ```python
-import openpyxl
-
-wb = openpyxl.load_workbook(template_path, keep_vba=False, data_only=False)
-ws = wb["Campaign Template"]
+wb = Workbook()
+ws = wb.active
+ws.title = "Campaign Template"
 ```
-
-`data_only=False` is critical. Without it, openpyxl replaces all formula strings with None,
-silently wiping every formula cell before any writes occur.
-
-Do not access, modify, or delete any other sheet. Only interact with "Campaign Template."
 
 ---
 
-### ABSOLUTE PROHIBITION — artifact_tool
+## Step 2 — Set Column Widths
 
-The following methods are strictly forbidden and must never appear anywhere in the script:
-
-```
-SpreadsheetArtifact
-artifact_tool
-artifact.recalculate()
-artifact.export()
-artifact.render()
-```
-
-These are ChatGPT internal rendering tools. When called after `wb.save()`, they overwrite the
-saved file with an internal format that strips all formatting, merged cells, colours, and
-content. The downloaded file will be blank. There are no exceptions to this rule.
-
-After `wb.save()`, the script must stop. No further file operations are permitted.
-
----
-
-### ABSOLUTE PROHIBITION — Sheet Deletion
-
-Never delete any sheet from the workbook. The following pattern is forbidden:
+Apply these exact column widths:
 
 ```python
-# FORBIDDEN — do not do this
-for s in wb.sheetnames[:]:
-    if s != 'Campaign Template':
-        del wb[s]
+col_widths = {
+    'A': 2.63,
+    'B': 35.18,
+    'C': 16.54,
+    'D': 15.09,
+    'E': 15.82,
+    'F': 13.82,
+    'G': 16.27,
+    'H': 13.00,
+    'I': 80.00,
+    'L': 9.09,
+    'M': 10.54,
+    'N': 9.09,
+    'P': 9.09,
+}
+for col, width in col_widths.items():
+    ws.column_dimensions[col].width = width
 ```
-
-Deleting sheets breaks any cross-sheet formula references in Campaign Template, turning them
-into `#REF!` errors. Keep all sheets intact. Only write to "Campaign Template."
 
 ---
 
-### ABSOLUTE PROHIBITION — Formatting Modifications
+## Step 3 — Set Row Heights
 
-Never set any of the following on any cell:
-
-```
-fill / PatternFill / fgColor
-font / Font
-border / Border
-number_format
-alignment
-```
-
-The template already contains all visual formatting. Writing any formatting property overwrites
-the existing template styles and corrupts the output. Your only job is to write values into
-the correct cells. Do not import or use `PatternFill`, `Font`, `Border`, or any openpyxl
-styles module.
-
----
-
-### How to Handle Merged Cells
-
-Every input row in the Campaign Template is a merged cell range (e.g. C2:H2, C9:H10).
-openpyxl raises a silent error when you write to any cell inside a merged range that is not
-the top-left anchor cell. The value will not be written.
-
-Always write to the top-left anchor cell only. The anchor cell address for each field is
-defined in the Cell-to-Source Mapping. Use those addresses exactly as listed.
-
-Use this helper before every write to confirm the cell is safe to write to:
+Apply these exact row heights:
 
 ```python
-def is_merged_non_anchor(ws, cell_ref):
-    from openpyxl.utils import coordinate_to_tuple
-    row, col = coordinate_to_tuple(cell_ref)
-    for merged in ws.merged_cells.ranges:
-        if (merged.min_row <= row <= merged.max_row and
-                merged.min_col <= col <= merged.max_col):
-            if row != merged.min_row or col != merged.min_col:
-                return True
-    return False
+row_heights = {
+    2: 72.0, 3: 20.5, 4: 20.5, 5: 20.5, 6: 18.65, 7: 18.65,
+    8: 18.5, 9: 18.5, 10: 18.5, 11: 58.0, 12: 21.0, 13: 21.0,
+    14: 18.65, 15: 18.65, 16: 18.65, 17: 18.65, 18: 18.65,
+    19: 18.65, 20: 18.65, 21: 18.65, 22: 18.65, 23: 18.65,
+    24: 18.65, 25: 18.65, 26: 18.65, 27: 18.65, 28: 18.65,
+    29: 18.65, 30: 18.65, 31: 19.75, 32: 21.0, 33: 21.0,
+    34: 21.0, 35: 21.0, 36: 21.0, 37: 22.0, 38: 37.75,
+    39: 55.25, 40: 55.25, 41: 26.4, 42: 26.4, 43: 26.4,
+}
+for row, height in row_heights.items():
+    ws.row_dimensions[row].height = height
 ```
-
-If `is_merged_non_anchor` returns True for a cell reference, skip it and log a warning.
-This should not happen if you are using the anchor addresses from the mapping, but use this
-check as a safety net.
 
 ---
 
-### How to Protect Formula Cells
-
-Before writing any value, check whether the cell already contains a formula. Formula cells
-must never be overwritten.
+## Step 4 — Define Reusable Style Helpers
 
 ```python
-def is_formula(cell):
-    return isinstance(cell.value, str) and cell.value.startswith("=")
+FONT_NAME = 'Aptos Narrow'
 
-def safe_write(ws, cell_ref, value):
-    cell = ws[cell_ref]
-    if is_formula(cell):
-        return False  # skip, log as preserved formula
-    if is_merged_non_anchor(ws, cell_ref):
-        return False  # skip, log as non-anchor merged cell
-    cell.value = value
-    return True
-```
+# Fill colours
+FILL_YELLOW_LIGHT = PatternFill('solid', fgColor='FFFFFFCC')  # light yellow input cells
+FILL_AMBER        = PatternFill('solid', fgColor='FFFFC000')  # amber/orange input cells
+FILL_NONE         = None
 
-The following cells are known formula cells in this template. Never pass them to `safe_write`:
+# Fonts
+def font(size=11, bold=False, color='FF000000', name=FONT_NAME):
+    return Font(name=name, size=size, bold=bold, color=color)
 
-```
-C21  — Campaign Revenue (RM)         formula: TPV x MDR
-C23  — Campaign Total Cost (RM)      formula: CPAM Cost + Direct Cost
-C25  — Campaign Direct Cost (RM)     formula: TPV/Txn-based cost rates
-C29  — Gross Profit (RM)             formula: Revenue minus Total Cost
-C30  — % ROI (GP / CPAM Cost)        formula: GP / CPAM Cost
-C38  — Usecases / Traffic Light      formula: derived from MDR rate
-C42  — CPAM Cost / User (RM)         formula: CPAM Cost / Participants
+FONT_14           = font(14)
+FONT_14_BOLD      = font(14, bold=True)
+FONT_14_RED       = font(14, color='FFFF0000')
+FONT_14_BOLD_RED  = font(14, bold=True, color='FFFF0000')
+FONT_14_BOLD_DKRED= font(14, bold=True, color='FFC00000')
+FONT_14_BOLD_BLUE = font(14, bold=True, color='FF0070C0')
+FONT_11_RED       = font(11, color='FFFF0000')
+FONT_12           = font(12)
+
+# Alignments
+ALIGN_CENTER      = Alignment(horizontal='center', vertical='center')
+ALIGN_CENTER_WRAP = Alignment(horizontal='center', vertical='center', wrap_text=True)
+ALIGN_LEFT        = Alignment(horizontal='left', vertical='center')
+ALIGN_LEFT_WRAP   = Alignment(horizontal='left', vertical='center', wrap_text=True)
+
+# Borders
+THIN = Side(style='thin')
+MED  = Side(style='medium')
+
+def border(left=True, right=True, top=True, bottom=True):
+    s = THIN
+    return Border(
+        left=s if left else Side(),
+        right=s if right else Side(),
+        top=s if top else Side(),
+        bottom=s if bottom else Side()
+    )
+
+BORDER_ALL  = border()
+BORDER_NONE = Border()
+
+# Helper to apply style to a cell
+def style(ws, ref, fill=None, fnt=None, align=None, bdr=None, num_fmt=None):
+    c = ws[ref]
+    if fill:    c.fill       = fill
+    if fnt:     c.font       = fnt
+    if align:   c.alignment  = align
+    if bdr:     c.border     = bdr
+    if num_fmt: c.number_format = num_fmt
 ```
 
 ---
 
-### MDR Write Rule
+## Step 5 — Apply Merge Ranges
 
-The MDR cell (C22) has a percentage number format already applied in the template.
-Always write MDR as a plain decimal number. Never write it as a string.
+Apply all merged cell ranges exactly as defined:
 
 ```python
-# CORRECT
-safe_write(ws, "C22", 0.013)   # displays as 1.30% due to cell format
-
-# FORBIDDEN
-safe_write(ws, "C22", "1.30%")  # breaks the formula that depends on this cell
-safe_write(ws, "C22", 1.3)      # wrong scale — displays as 130%
+merges = [
+    'C2:H2',  'C3:H3',  'C4:H4',   'C5:H5',
+    'C6:E6',  'F6:H6',  'C7:E7',   'F7:H7',
+    'C8:H8',  'C9:H10', 'C11:H11', 'C12:H12',
+    'C13:H13','C14:H14','C15:H15', 'C16:H16',
+    'C21:H21','C22:H22','C23:H23', 'C24:H24',
+    'C25:H25','C26:H26','C27:H27', 'C28:H28',
+    'C29:H29','C30:H30','C38:H38', 'C39:H39',
+    'C40:H40','C41:G41','C42:H42', 'C43:G43',
+]
+for m in merges:
+    ws.merge_cells(m)
 ```
 
 ---
 
-### Phase 1 Write Targets — Complete Cell List
+## Step 6 — Write Static Labels (Column B and Header Rows)
 
-Write only the following cells during a Phase 1 run. Use `safe_write` for every cell.
-
-```
-General Info block:
-  C2   CAMPAIGN_NAME           string    from RFA
-  C3   RFA_ID                  string    from RFA, only if status is Approved
-  C4   PARTNER_NAME            string    from RFA
-  C5   CAMPAIGN_TYPE           string    from RFA or write MANUAL_INPUT_REQUIRED
-  C7   CAMPAIGN_START_DATE     string    from RFA, format DD/MM/YYYY
-  F7   CAMPAIGN_END_DATE       string    from RFA, format DD/MM/YYYY
-  C8   FUNDING_MECHANISM       string    from RFA or write MANUAL_INPUT_REQUIRED
-  C9   MECHANIC_PRIMARY        string    from RFA
-  C11  MECHANIC_SECONDARY      string    from RFA or leave blank
-  C12  RFA_AMOUNT_RM           number    from RFA
-  C13  COST_CENTRE             string    from RFA
-
-Core KPIs block (partner-derived, provisional):
-  C14  CAMPAIGN_PARTICIPANTS   integer   distinct users on CHARGE rows
-  C15  CAMPAIGN_TPV_RM         number    sum of transaction_amount on CHARGE rows
-  C16  CAMPAIGN_TXN_COUNT      integer   distinct transactions on CHARGE rows
-
-MDR and cost:
-  C22  MDR_RATE                decimal   from ignition prompt, e.g. 0.013 for 1.3%
-  C24  CPAM_COST_RM            number    sum of benefit_amount on CHARGE rows
-                                         if unavailable write PENDING_HUMAN_VALIDATION
-
-Phase 2 placeholder writes — write the exact string PENDING_HUMAN_VALIDATION:
-  C18 D18 E18 F18 G18 H18     Retention Post 1M to 6M
-  C20 D20 E20 F20 G20 H20     Retention Post 7M to 12M
-  C26                          Avg Reload Cost %
-  C27                          Avg Cloud Cost / Txn (RM)
-  C28                          Avg PLSA Cost / Txn (RM)
-  C32 D32 E32 F32 G32 H32     Merchant TPV display row
-  C33 D33 E33 F33 G33 H33     Merchant TPV growth display row
-  C34 D34 E34 F34 G34 H34     Merchant TPV value row
-  C35 D35 E35 F35 G35 H35     Merchant TPV growth value row
-  C36 D36 E36 F36 G36 H36     Merchant TPV growth % row
-  C37 D37 E37 F37 G37 H37     Monthly MTU row
-  C39                          TPV Pre vs During summary
-  C40                          TPV Pre vs Post 3M summary
-  C41                          Proceed to 2nd Review decision
-  C43                          Est. 12M CLTV
-
-Do not write to any KEEP_FORMULA cells:
-  C21, C23, C25, C29, C30, C38, C42
-  (and any other cell that begins with "=" when read)
-```
-
----
-
-### How to Save the Output File
+These are the fixed row labels. Write them exactly as shown:
 
 ```python
-output_path = f"campaign_postmortem_{campaign_name}_phase1.xlsx"
-wb.save(output_path)
-print("Saved:", output_path)
+labels = {
+    'B2':  'Campaign Name',
+    'B3':  'RFA No.',
+    'B4':  'Partner Name',
+    'B5':  'Type of Campaign',
+    'B6':  'Campaign Period',
+    'B8':  'Funding Mechanism',
+    'B9':  'Mechanic',
+    'B12': 'RFA Amt',
+    'B13': 'Cost Centre',
+    'B14': 'Campaign Participants',
+    'B15': 'Campaign TPV (RM)',
+    'B16': 'Campaign Txn #',
+    'B17': 'Campaign User Retention Rate',
+    'B21': 'Campaign Revenue (RM)',
+    'B22': 'MDR',
+    'B23': 'Campaign Total Cost (RM)',
+    'B24': 'CPAM Cost (RM)',
+    'B25': 'Campaign Direct Cost (RM)',
+    'B26': 'Avg Reload Cost %',
+    'B27': 'Avg Cloud Cost / Txn (RM)',
+    'B28': 'Avg PLSA Cost / Txn (RM)',
+    'B29': 'Gross Profit (RM)',
+    'B30': '% ROI (GP / CPAM Cost)',
+    'B31': 'Merchant-Level Impact Analysis',
+    'B32': 'Monthly TPV (RM)',
+    'B33': 'Avg Monthly TPV Growh (RM)',
+    'B34': 'Monthly TPV (RM)',
+    'B35': 'Avg Monthly TPV Growh (RM)',
+    'B36': 'Avg Monthly TPV Growh (%)',
+    'B37': 'Monthly MTU',
+    'B38': 'Usecases',
+    'B39': 'TPV Pre- vs During Campaign',
+    'B40': 'TPV Pre- vs Post 3M Campaign',
+    'B41': 'Proceed to 2nd Review',
+    'B42': 'CPAM Cost/User (RM)',
+    'B43': 'Est. 12M CLTV',
+    # Sub-headers
+    'C6':  'Starting Date',
+    'F6':  'Ending Date',
+    # Retention column headers row 17
+    'C17': 'Post 1M', 'D17': 'Post 2M', 'E17': 'Post 3M',
+    'F17': 'Post 4M', 'G17': 'Post 5M', 'H17': 'Post 6M',
+    # Retention column headers row 19
+    'C19': 'Post 7M',  'D19': 'Post 8M',  'E19': 'Post 9M',
+    'F19': 'Post 10M', 'G19': 'Post 11M', 'H19': 'Post 12M',
+    # Merchant impact column headers row 31
+    'C31': 'Pre-Campaign', 'D31': 'During',  'E31': 'Post 1M',
+    'F31': 'Post 2M',      'G31': 'Post 3M', 'H31': 'Post 6M',
+}
+for ref, val in labels.items():
+    ws[ref] = val
 ```
-
-Save once. To a new filename. Never overwrite the original template.
-No further steps after `wb.save()`. Do not call any render, recalculate, or export method.
 
 ---
 
-### Error Handling Rules
+## Step 7 — Write Notes Column (Column I)
+
+These are the notes/instructions visible in column I. Write them exactly:
+
+```python
+notes = {
+    'I2':  "Get from RFA pdf copy under 'Campaign Name'",
+    'I3':  "Get from RFA pdf copy on 2nd Line from Top and Status need to be 'Approved'. Don't grab the RFA number its not approved",
+    'I4':  "Get from RFA pdf copy under 'Campaign Name'",
+    'I5':  'CMS or Non CMS. Ivy to get from BU',
+    'I7':  'Campaign dates in Finance PR file may not be accurate as BU may defer the date. Ivy to update manually after checking with BU',
+    'I8':  'Ivy to update manually after checking with BU',
+    'I9':  'Get from RFA pdf copy under Purpose/Mechanics or Ivy to update manually after checking with BU',
+    'I12': "Get from RFA pdf copy under 'Amount'",
+    'I13': "Get from RFA pdf copy under 'Campaign Name'",
+    'I14': 'Populate from reconciled Partner Raw Data and Internal Verification Data.',
+    'I15': 'Populate from reconciled Partner Raw Data and Internal Verification Data.',
+    'I16': 'Populate from reconciled Partner Raw Data and Internal Verification Data.',
+    'I17': 'This is not actual number, just a dummy number to show my requirement',
+    'I18': 'Populate with month-on-month retention percentages for Post 1M to Post 6M based on campaign participants.',
+    'I19': 'This is not actual number, just a dummy number to show my requirement',
+    'I20': 'Populate with month-on-month retention percentages for Post 7M to Post 12M based on campaign participants.',
+    'I21': 'Auto-calculates when Campaign TPV and MDR are numeric; otherwise shows placeholder.',
+    'I22': 'Update from the ignition prompt MDR input for this campaign, or from an explicitly approved finance / BU override. Do not reuse prior campaign MDR.',
+    'I23': 'Auto-calculates when CPAM Cost and Campaign Direct Cost are numeric; otherwise shows placeholder.',
+    'I24': 'Populate from reconciled Partner Raw Data and Internal Verification Data.',
+    'I25': 'Auto-calculates when TPV, Txn, and direct-cost rate inputs are numeric; otherwise shows placeholder.',
+    'I26': 'Populate with the applicable average reload cost percentage from Finance or approved cost source.',
+    'I27': 'Populate with the applicable average cloud cost per transaction from Finance or approved cost source.',
+    'I28': 'Populate with the applicable average PLSA cost per transaction from Finance or approved cost source.',
+    'I29': 'Auto-calculates when Campaign Revenue and Campaign Total Cost are numeric; otherwise shows placeholder.',
+    'I30': 'Auto-calculates when Gross Profit and CPAM Cost are numeric; otherwise shows placeholder.',
+    'I31': 'Pre-campaign mthly tpv is 30days before campaign date',
+    'I33': 'Populate if this metric is required for the campaign; otherwise leave blank per business rule.',
+    'I34': 'Populate with actual monthly TPV values from BI/internal data source.',
+    'I35': 'Populate with actual average monthly TPV growth values.',
+    'I36': 'Populate if this metric is required for the campaign; otherwise leave blank per business rule.',
+    'I38': 'Traffic Light (MDR%) rule: Green if MDR >= 0.47%; Yellow if MDR >= 0.18% and < 0.47%; Red if MDR < 0.18%. Keep formula intact and update MDR only.',
+    'I42': 'Auto-calculates when CPAM Cost and Campaign Participants are numeric; otherwise shows placeholder.',
+    'I43': 'Populate only when sourced from the approved CLTV data owner/system.',
+}
+for ref, val in notes.items():
+    ws[ref] = val
+```
+
+---
+
+## Step 8 — Write Formulas
+
+Write these formulas exactly as strings into the anchor cells shown.
+These are the self-calculating cells. Do not hardcode their values.
+
+```python
+ws['C21'] = '=IF(COUNT(C15,C22)=2,C15*C22,"{{CAMPAIGN_REVENUE_RM}}")'
+ws['C23'] = '=IF(COUNT(C24,C25)=2,C24+C25,"{{CAMPAIGN_TOTAL_COST_RM}}")'
+ws['C25'] = '=IF(COUNT(C15,C16,C26,C27,C28)=5,(C15*C26)+(C16*C27)+(C16*C28),"{{DIRECT_COST_RM}}")'
+ws['C29'] = '=IF(COUNT(C21,C23)=2,C21-C23,"{{GROSS_PROFIT_RM}}")'
+ws['C30'] = '=IF(COUNT(C29,C24)=2,C29/C24,"{{ROI_PCT}}")'
+ws['C38'] = '=IF(ISNUMBER(C22),IF(C22>=0.0047,"Green",IF(C22>=0.0018,"Yellow","Red"))&" (MDR% = "&TEXT(C22,"0.00%")&")","{{TRAFFIC_LIGHT_STATUS}}")'
+ws['C42'] = '=IF(COUNT(C24,C14)=2,C24/C14,"{{CPAM_COST_PER_USER_RM}}")'
+```
+
+---
+
+## Step 9 — Apply All Cell Formatting
+
+Apply formatting to every cell as extracted from the original template.
+Use the style helper defined in Step 4.
+
+```python
+# ── ROW 2: Campaign Name ──────────────────────────────────────────
+style(ws,'B2', fnt=font(14,bold=True), align=ALIGN_LEFT_WRAP,   bdr=BORDER_ALL)
+style(ws,'C2', fnt=font(14,bold=True), align=ALIGN_CENTER_WRAP, bdr=BORDER_ALL)
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}2', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROW 3: RFA No. ───────────────────────────────────────────────
+style(ws,'B3', fnt=FONT_14, align=ALIGN_LEFT_WRAP,   bdr=BORDER_ALL)
+style(ws,'C3', fnt=FONT_14, align=ALIGN_CENTER_WRAP, bdr=BORDER_ALL)
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}3', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROWS 4–5: Partner Name, Type of Campaign ──────────────────────
+for row in [4, 5]:
+    style(ws, f'B{row}', fnt=FONT_14, align=ALIGN_LEFT_WRAP,   bdr=BORDER_ALL)
+    style(ws, f'C{row}', fnt=FONT_14, align=ALIGN_CENTER_WRAP, bdr=BORDER_ALL)
+    for col in ['D','E','F','G','H']:
+        style(ws, f'{col}{row}', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROWS 6–7: Campaign Period ─────────────────────────────────────
+style(ws,'B6', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C6', fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='mm-dd-yy')
+style(ws,'F6', fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='mm-dd-yy')
+for col in ['D','E','G','H']:
+    style(ws, f'{col}6', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'I6', fnt=FONT_11_RED)
+
+style(ws,'B7', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C7', fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='mm-dd-yy')
+style(ws,'F7', fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='mm-dd-yy')
+for col in ['D','E','G','H']:
+    style(ws, f'{col}7', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROW 8: Funding Mechanism ──────────────────────────────────────
+style(ws,'B8', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C8', fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL)
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}8', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROWS 9–11: Mechanic ───────────────────────────────────────────
+style(ws,'B9',  fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C9',  fnt=FONT_14, align=ALIGN_LEFT_WRAP, bdr=BORDER_ALL)
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}9', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'B10', fnt=FONT_14, bdr=BORDER_ALL)
+for col in ['C','D','E','F','G','H']:
+    style(ws, f'{col}10', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'B11', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C11', fnt=FONT_14, align=ALIGN_LEFT_WRAP, bdr=BORDER_ALL)
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}11', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROW 12: RFA Amount ────────────────────────────────────────────
+style(ws,'B12', fnt=FONT_14, align=ALIGN_LEFT_WRAP,  bdr=BORDER_ALL)
+style(ws,'C12', fnt=FONT_14, align=ALIGN_CENTER_WRAP,bdr=BORDER_ALL, num_fmt='"RM"#,##0;[Red]\\-"RM"#,##0')
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}12', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROW 13: Cost Centre ───────────────────────────────────────────
+style(ws,'B13', fnt=FONT_14, align=ALIGN_LEFT_WRAP,  bdr=BORDER_ALL)
+style(ws,'C13', fnt=FONT_14, align=ALIGN_CENTER_WRAP,bdr=BORDER_ALL, num_fmt='"RM"#,##0;[Red]\\-"RM"#,##0')
+style(ws,'H13', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROW 14: Campaign Participants (yellow input) ───────────────────
+style(ws,'B14', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C14', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='#,##0')
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}14', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'I14', fnt=FONT_11_RED)
+
+# ── ROW 15: Campaign TPV (yellow input) ───────────────────────────
+style(ws,'B15', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C15', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='#,##0.00')
+style(ws,'H15', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'I15', fnt=FONT_11_RED)
+
+# ── ROW 16: Campaign Txn (yellow input) ───────────────────────────
+style(ws,'B16', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C16', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='#,##0')
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}16', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'I16', fnt=FONT_11_RED)
+
+# ── ROW 17: Retention header row (yellow, bold headers) ────────────
+style(ws,'B17', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, bdr=BORDER_ALL)
+for col in ['C','D','E','F','G','H']:
+    style(ws, f'{col}17', fill=FILL_YELLOW_LIGHT, fnt=FONT_14_BOLD, align=ALIGN_CENTER, bdr=BORDER_ALL)
+style(ws,'I17', fnt=FONT_11_RED)
+
+# ── ROW 18: Retention P1–P6 (yellow input, percentage format) ──────
+style(ws,'B18', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, bdr=BORDER_ALL)
+for col in ['C','D','E','F','G','H']:
+    style(ws, f'{col}18', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='0%')
+style(ws,'I18', fnt=FONT_11_RED)
+
+# ── ROW 19: Retention header row 2 ────────────────────────────────
+style(ws,'B19', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, bdr=BORDER_ALL)
+for col in ['C','D','E','F','G','H']:
+    style(ws, f'{col}19', fill=FILL_YELLOW_LIGHT, fnt=FONT_14_BOLD, align=ALIGN_CENTER, bdr=BORDER_ALL)
+style(ws,'I19', fnt=FONT_11_RED)
+
+# ── ROW 20: Retention P7–P12 (yellow input, percentage format) ──────
+style(ws,'B20', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, bdr=BORDER_ALL)
+for col in ['C','D','E','F','G','H']:
+    style(ws, f'{col}20', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='0%')
+style(ws,'I20', fnt=FONT_11_RED)
+
+# ── ROW 21: Campaign Revenue (formula row) ────────────────────────
+style(ws,'B21', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C21', fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='#,##0')
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}21', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROW 22: MDR (amber input) ─────────────────────────────────────
+style(ws,'B22', fill=FILL_AMBER, fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C22', fill=FILL_AMBER, fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='0.00%')
+style(ws,'H22', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROW 23: Campaign Total Cost (formula row) ─────────────────────
+style(ws,'B23', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C23', fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='#,##0')
+style(ws,'H23', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROW 24: CPAM Cost (yellow input) ──────────────────────────────
+style(ws,'B24', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C24', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='#,##0')
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}24', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'I24', fnt=FONT_11_RED)
+
+# ── ROW 25: Campaign Direct Cost (formula row) ────────────────────
+style(ws,'B25', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C25', fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='#,##0')
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}25', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROW 26: Avg Reload Cost % (amber input) ───────────────────────
+style(ws,'B26', fill=FILL_AMBER, fnt=FONT_14, align=ALIGN_LEFT, bdr=BORDER_ALL)
+style(ws,'C26', fill=FILL_AMBER, fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='0.0000%')
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}26', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'I26', fnt=FONT_11_RED)
+
+# ── ROW 27: Avg Cloud Cost / Txn (amber input) ────────────────────
+style(ws,'B27', fill=FILL_AMBER, fnt=FONT_14, align=ALIGN_LEFT, bdr=BORDER_ALL)
+style(ws,'C27', fill=FILL_AMBER, fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='#,##0.0000')
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}27', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'I27', fnt=FONT_11_RED)
+
+# ── ROW 28: Avg PLSA Cost / Txn (amber input) ─────────────────────
+style(ws,'B28', fill=FILL_AMBER, fnt=FONT_14, align=ALIGN_LEFT, bdr=BORDER_ALL)
+style(ws,'C28', fill=FILL_AMBER, fnt=FONT_14, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='#,##0.0000')
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}28', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'I28', fnt=FONT_11_RED)
+
+# ── ROW 29: Gross Profit (formula, bold red font) ─────────────────
+style(ws,'B29', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C29', fnt=FONT_14_BOLD_RED, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='#,##0')
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}29', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROW 30: % ROI (formula, bold red font) ────────────────────────
+style(ws,'B30', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C30', fnt=FONT_14_BOLD_RED, align=ALIGN_CENTER, bdr=BORDER_ALL, num_fmt='0.00%')
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}30', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROW 31: Merchant-Level Impact Analysis header ──────────────────
+for col in ['B','C','D','E','F','G','H']:
+    style(ws, f'{col}31', fnt=FONT_14_BOLD, align=ALIGN_CENTER, bdr=BORDER_ALL)
+style(ws,'I31', fnt=FONT_11_RED)
+
+# ── ROWS 32–35: TPV display/value rows (yellow, millions format) ───
+for row in [32, 33, 34, 35]:
+    style(ws, f'B{row}', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, bdr=BORDER_ALL)
+    for col in ['C','D','E','F','G','H']:
+        style(ws, f'{col}{row}', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, align=ALIGN_CENTER,
+              bdr=BORDER_ALL, num_fmt='#,##0.00,,')
+    if row in [33, 34, 35]:
+        style(ws, f'I{row}', fnt=FONT_11_RED)
+
+# ── ROW 36: TPV Growth % (yellow, percentage format) ──────────────
+style(ws,'B36', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, bdr=BORDER_ALL)
+for col in ['C','D','E','F','G','H']:
+    style(ws, f'{col}36', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, align=ALIGN_CENTER,
+          bdr=BORDER_ALL, num_fmt='0.0%')
+style(ws,'I36', fnt=FONT_11_RED)
+
+# ── ROW 37: Monthly MTU (yellow, integer format) ──────────────────
+style(ws,'B37', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, bdr=BORDER_ALL)
+for col in ['C','D','E','F','G']:
+    style(ws, f'{col}37', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, align=ALIGN_CENTER,
+          bdr=BORDER_ALL, num_fmt='#,##0')
+style(ws,'H37', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, align=ALIGN_CENTER,
+      bdr=BORDER_ALL, num_fmt='#,##0.00,,')
+
+# ── ROW 38: Usecases / Traffic Light (yellow, red font, wrap) ──────
+style(ws,'B38', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C38', fill=FILL_YELLOW_LIGHT, fnt=FONT_14_RED, align=ALIGN_CENTER_WRAP, bdr=BORDER_ALL)
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}38', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'I38', fnt=FONT_11_RED)
+
+# ── ROWS 39–40: TPV summaries (yellow, bold red, wrap) ─────────────
+for row in [39, 40]:
+    style(ws, f'B{row}', fill=FILL_YELLOW_LIGHT, fnt=FONT_14, bdr=BORDER_ALL)
+    style(ws, f'C{row}', fill=FILL_YELLOW_LIGHT, fnt=FONT_14_BOLD_RED,
+          align=ALIGN_CENTER_WRAP, bdr=BORDER_ALL)
+    for col in ['D','E','F','G','H']:
+        style(ws, f'{col}{row}', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROW 41: Proceed to 2nd Review (bold dark red, wrap) ─────────────
+style(ws,'B41', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C41', fnt=FONT_14_BOLD_DKRED, align=ALIGN_CENTER_WRAP, bdr=BORDER_ALL)
+for col in ['D','E','F','G']:
+    style(ws, f'{col}41', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'H41', fnt=FONT_14_BOLD_DKRED, align=ALIGN_CENTER_WRAP, bdr=BORDER_ALL)
+
+# ── ROW 42: CPAM Cost/User (formula, RM format) ────────────────────
+style(ws,'B42', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'C42', fnt=FONT_14, align=ALIGN_CENTER_WRAP, bdr=BORDER_ALL, num_fmt='"RM"#,##0.00')
+for col in ['D','E','F','G','H']:
+    style(ws, f'{col}42', fnt=FONT_14, bdr=BORDER_ALL)
+
+# ── ROW 43: Est. 12M CLTV (bold blue, RM format) ──────────────────
+style(ws,'B43', fnt=FONT_14_BOLD_BLUE, bdr=BORDER_ALL)
+style(ws,'C43', fnt=FONT_14_BOLD_BLUE, align=ALIGN_CENTER_WRAP,
+      bdr=BORDER_ALL, num_fmt='"RM"#,##0.00')
+for col in ['D','E','F','G']:
+    style(ws, f'{col}43', fnt=FONT_14, bdr=BORDER_ALL)
+style(ws,'H43', fnt=FONT_14_BOLD_BLUE, align=ALIGN_CENTER_WRAP, num_fmt='"RM"#,##0.00')
+style(ws,'I43', fnt=FONT_11_RED)
+```
+
+---
+
+## Step 10 — Populate Phase 1 Campaign Values
+
+After the structure is fully built, write the campaign-specific values.
+Use the exact cell references below. Write only to anchor cells.
+
+```python
+# ── PHASE 1 INPUT VALUES ──────────────────────────────────────────
+# Replace these variables with values derived from the RFA and partner CSV
+
+ws['C2']  = campaign_name         # string — from RFA
+ws['C3']  = rfa_id                # string — from RFA, only if Approved
+ws['C4']  = partner_name          # string — from RFA
+ws['C5']  = campaign_type         # string — from RFA or 'MANUAL_INPUT_REQUIRED'
+ws['C7']  = campaign_start_date   # string DD/MM/YYYY — from RFA
+ws['F7']  = campaign_end_date     # string DD/MM/YYYY — from RFA
+ws['C8']  = funding_mechanism     # string — from RFA or 'MANUAL_INPUT_REQUIRED'
+ws['C9']  = mechanic_primary      # string — from RFA
+ws['C11'] = mechanic_secondary    # string — from RFA or blank string
+ws['C12'] = rfa_amount            # number — from RFA e.g. 107500.00
+ws['C13'] = cost_centre           # string — from RFA
+
+# Partner-derived provisional KPIs
+ws['C14'] = participants          # integer — distinct users on CHARGE rows
+ws['C15'] = tpv                   # float   — sum of transaction_amount on CHARGE rows
+ws['C16'] = txn_count             # integer — distinct transaction IDs on CHARGE rows
+
+# MDR — write as plain decimal, e.g. 0.013 for 1.3%
+ws['C22'] = mdr_rate              # float   — from ignition prompt
+
+# CPAM Cost — from partner file benefit_amount sum, or PENDING_HUMAN_VALIDATION
+ws['C24'] = cpam_cost             # float or string 'PENDING_HUMAN_VALIDATION'
+
+# ── PHASE 2 PLACEHOLDERS ─────────────────────────────────────────
+# Write PENDING_HUMAN_VALIDATION string into all Phase 2 cells
+
+PHV = 'PENDING_HUMAN_VALIDATION'
+
+phase2_cells = [
+    'C18','D18','E18','F18','G18','H18',   # Retention P1–P6
+    'C20','D20','E20','F20','G20','H20',   # Retention P7–P12
+    'C26','C27','C28',                      # Finance cost rates
+    'C32','D32','E32','F32','G32','H32',   # Merchant TPV display
+    'C33','D33','E33','F33','G33','H33',   # Merchant TPV growth display
+    'C34','D34','E34','F34','G34','H34',   # Merchant TPV values
+    'C35','D35','E35','F35','G35','H35',   # Merchant TPV growth values
+    'C36','D36','E36','F36','G36','H36',   # Merchant TPV growth %
+    'C37','D37','E37','F37','G37','H37',   # Monthly MTU
+    'C39','C40',                            # TPV narrative summaries
+    'C41',                                  # 2nd Review decision
+    'C43',                                  # Est. 12M CLTV
+]
+for ref in phase2_cells:
+    ws[ref] = PHV
+```
+
+---
+
+## Step 11 — Save the Output File
+
+```python
+output_filename = f"campaign_postmortem_{campaign_name}_phase1.xlsx"
+# Sanitise filename — remove characters not safe for filenames
+import re
+output_filename = re.sub(r'[\\/*?:"<>|]', '_', output_filename)
+
+wb.save(output_filename)
+print("Saved:", output_filename)
+```
+
+Save once. To a new filename. End the script immediately after.
+Do not call SpreadsheetArtifact, artifact_tool, recalculate, export, or render.
+
+---
+
+## Step 12 — Error Handling
 
 ```
-1. If openpyxl cannot open the template:
+1. If partner CSV cannot be read:
    Stop and return:
-   "ERROR: Template file could not be opened. Confirm the filename is exact
-   and the file is a valid .xlsx format."
+   "ERROR: Partner CSV file could not be read. Check filename and format."
 
-2. If the sheet "Campaign Template" is not found:
-   Print wb.sheetnames and return:
-   "ERROR: Sheet 'Campaign Template' not found. Available sheets: [list].
-   Confirm the sheet name and update the cell-to-source mapping."
-   Do not guess or infer the sheet name.
+2. If CHARGE rows cannot be found in the partner CSV:
+   Set participants, tpv, txn_count to 'PENDING_HUMAN_VALIDATION'
+   Note this in the chat summary under "Data Warnings."
 
-3. If a write fails on a specific cell:
-   Log the cell address and error message.
-   Skip that cell and continue with all remaining cells.
+3. If any individual cell write fails:
+   Log the cell address and error.
+   Skip that cell and continue.
    Include all failed cells in the chat summary under "Write Errors."
 
-4. If a merged cell conflict is detected:
-   Identify the top-left anchor of the merged range.
-   Retry the write to the anchor cell only.
-   Log the correction in the chat summary.
+4. Never raise an unhandled exception that stops the run.
+   Always reach wb.save() even if some cells failed.
+   A partial output is better than no output.
 
-5. Never raise an unhandled exception that stops the entire run.
-   Always reach wb.save() and produce an output file even if individual cell
-   writes fail. A partial output is better than no output.
+5. After wb.save(), print the filename and stop.
+   No further operations.
 ```
 
 ---
 
-### Scope Restriction
+## ABSOLUTE PROHIBITIONS — ENFORCE ON EVERY RUN
 
-The AI engine interacts only with the "Campaign Template" sheet.
+```
+NEVER use: SpreadsheetArtifact, artifact_tool, artifact.recalculate(),
+           artifact.export(), artifact.render()
 
-Do not read from, write to, or delete any other sheet.
+NEVER use: openpyxl.load_workbook() — do not open any file, build fresh only
 
-If Campaign Template contains formulas that reference other sheets
-(e.g. =SourceFileTemplate!R12), leave those formulas exactly as-is.
-Do not attempt to populate the referenced cells in other sheets.
-The human validator manages cross-sheet references in Phase 2.
+NEVER delete sheets
+
+NEVER write MDR as a string — always write as decimal float e.g. 0.013
+
+NEVER hardcode calculated values — use formulas as strings in formula cells
+
+NEVER call wb.save() more than once
+```

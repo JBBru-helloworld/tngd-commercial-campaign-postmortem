@@ -162,8 +162,8 @@ Do not output a separate third deliverable. The response must only consist of:
 These rules apply to the Python script that populates the Excel output file.
 They must be followed exactly. Any deviation will produce a blank or corrupted file.
 
-- Open the template with `openpyxl.load_workbook(path, keep_vba=False, data_only=False)`.
-  Do not omit `data_only=False`.
+- Build the output from scratch using `Workbook()`. Do not open any template file.
+  Never use `openpyxl.load_workbook()` anywhere in the script.
 - Never call `SpreadsheetArtifact`, `artifact_tool`, `artifact.recalculate()`,
   `artifact.export()`, or `artifact.render()`. These destroy the output file.
 - Never delete any sheet from the workbook.

@@ -120,10 +120,10 @@ Never use SpreadsheetArtifact, artifact_tool, artifact.recalculate(), artifact.e
 or artifact.render(). These overwrite the saved file with a blank internal format.
 The only permitted save call is wb.save(output_path).
 
-**G-XL-2 — Open with data_only=False.**
-Always open the template as:
-`openpyxl.load_workbook(path, keep_vba=False, data_only=False)`
-Omitting data_only=False wipes all formula cells before any writes occur.
+**G-XL-2 — Never use load_workbook(). Build fresh only.**
+Never open any template file with openpyxl.load_workbook(). Always build the output
+workbook from scratch using Workbook(). The template file is a visual reference only —
+all structure, formatting, and formulas are rebuilt programmatically in the script.
 
 **G-XL-3 — Never delete sheets.**
 All sheets must remain in the workbook. Deleting sheets breaks cross-sheet formula
@@ -147,3 +147,8 @@ C22 must receive a decimal value (e.g. 0.013). Never write a percentage string.
 **G-XL-8 — Save once, then stop.**
 Call wb.save() once. Print the output path. End the script.
 No render, recalculate, preview, or export calls after save.
+
+**G-XL-9 — Always build from Workbook() — never load_workbook().**
+The output file must always be constructed by creating a new Workbook() and applying
+all structure, merges, formatting, formulas, and campaign values programmatically.
+Never use openpyxl.load_workbook() for any purpose in the population script.
