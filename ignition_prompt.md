@@ -1,10 +1,22 @@
 # Ignition Prompt: Run the TNGD Campaign Post-Mortem Engine
 
-Use this prompt to run a new campaign post-mortem. Update the run-configuration values near the top before each run.
+## ✏️ RUN CONFIGURATION — UPDATE THESE BEFORE EVERY RUN
+
+CAMPAIGN NAME:     [UPDATE — e.g. 241122 COE RM107.5K Trip.com Launch Campaign]
+MDR PERCENTAGE:    [UPDATE — e.g. 1.30%]
+RFA FILE NAME:     [UPDATE — e.g. RFA-230752_Tripcom.pdf]
+PARTNER CSV FILE:  [UPDATE — e.g. Trip AMA Nov 2024.csv]
+
+> These are the only four things you need to change each run.
+> Everything below this line is fixed engine logic — do not edit it.
 
 ---
 
-## RUN CONFIGURATION — UPDATE THESE VALUES BEFORE EACH RUN
+Use this prompt to run a new campaign post-mortem. The four run-configuration values above are the only fields that change between runs.
+
+---
+
+## ENGINE CONFIGURATION — FIXED, DO NOT EDIT
 
 ### A. Knowledge Base / Static Engine Sources
 These are the engine reference files that the AI must read **first** before reading the run configuration or campaign-specific uploads. Update these names only if your stored engine files have been renamed.
@@ -20,17 +32,17 @@ These are the engine reference files that the AI must read **first** before read
 - Engine runbook file: `engine_runbook.md`
 
 ### B. Campaign-Specific Manual Inputs for This Run
-These values must be updated for each campaign run.
+These values are read from the RUN CONFIGURATION block at the top of this prompt.
 
-- Campaign name / label: `[UPDATE_CAMPAIGN_NAME]`
-- MDR percentage for this run: `[UPDATE_MDR_PERCENTAGE]`
+- Campaign name / label: Read campaign name from the RUN CONFIGURATION block at the top of this prompt.
+- MDR percentage for this run: Read MDR percentage from the RUN CONFIGURATION block at the top of this prompt.
 - MDR source / approver note, if applicable: `[UPDATE_MDR_SOURCE_OR_NOTE]`
 
 ### C. Campaign-Specific Files for This Run (Phase 1 Required + Phase 2 Optional)
 These are the uploaded files that will change every time this prompt is used.
 
-- RFA / Sage approval file: `[UPDATE_FILENAME_RFA_FILE]` — **[REQUIRED — Phase 1]**
-- Partner raw data file(s): `[UPDATE_FILENAME_PARTNER_RAW_FILE_OR_FILES]` — **[REQUIRED — Phase 1]**
+- RFA / Sage approval file: Read RFA file name from the RUN CONFIGURATION block at the top of this prompt. — **[REQUIRED — Phase 1]**
+- Partner raw data file(s): Read partner CSV file name from the RUN CONFIGURATION block at the top of this prompt. — **[REQUIRED — Phase 1]**
 - Internal validation / transaction data file(s): `[UPDATE_FILENAME_INTERNAL_VALIDATION_FILE_OR_FILES]` — **[OPTIONAL — Phase 2, human-completed]**
 - Internal retention data file(s), if provided: `[UPDATE_FILENAME_RETENTION_FILE_OR_FILES]` — **[OPTIONAL — Phase 2, human-completed]**
 - Finance rate / cost input file(s), if provided: `[UPDATE_FILENAME_FINANCE_FILE_OR_FILES]` — **[OPTIONAL — Phase 2, human-completed]**
@@ -39,7 +51,7 @@ These are the uploaded files that will change every time this prompt is used.
 
 ## PRIMARY INSTRUCTION
 
-Please initialize and run the **TNGD Campaign Post-Mortem Engine** for the campaign listed above.
+Please initialize and run the **TNGD Campaign Post-Mortem Engine** for the campaign listed in the RUN CONFIGURATION block at the top of this prompt.
 
 You must execute the work in the following order:
 
@@ -71,13 +83,19 @@ The master template workbook must be treated as the design source of truth. Pres
 Read the workbook tabs and embedded engine tabs first, including any helper, placeholder, mapping, or runbook tabs contained inside the workbook.
 
 ### Step 2 — Read the campaign-specific manual inputs from this prompt
-After the static engine sources are fully read, capture the current-run values from Section B above.
+After the static engine sources are fully read, capture the current-run values from the RUN CONFIGURATION block at the top of this prompt.
 
 Rules:
-- use the MDR percentage from Section B as the campaign-specific MDR input for this run
+- use the MDR percentage from the RUN CONFIGURATION block as the campaign-specific MDR input for this run
 - do not infer, estimate, or reuse MDR from prior campaigns
-- if MDR is missing from Section B and no approved supporting source explicitly provides it, mark the MDR field `MANUAL_INPUT_REQUIRED`
+- if MDR is missing from the RUN CONFIGURATION block and no approved supporting source explicitly provides it, mark the MDR field `MANUAL_INPUT_REQUIRED`
 - if both a prompt-provided MDR and a file-provided MDR exist, validate the mismatch and follow the source hierarchy defined in the runbook
+
+MDR CONVERSION RULE:
+The MDR in the RUN CONFIGURATION block is written as a percentage (e.g. 1.30%).
+Before writing it to the Excel file, convert it to a decimal by dividing by 100.
+Example: 1.30% → write 0.013 to cell C22.
+Never write the percentage string directly. Always write the decimal float.
 
 ### Step 3 — Read the campaign-specific uploaded files
 After the static engine sources and manual inputs are fully read, read the campaign-specific uploaded files listed in Section C above.
@@ -99,11 +117,25 @@ When processing the campaign files:
 - use partner raw data as supporting evidence and variance-check source
 - use retention files only for actual observed retention values
 - use finance input files only for finance-controlled fields
-- use the current-run MDR from Section B to populate the workbook MDR input field unless an explicitly approved higher-priority override is defined
+- use the current-run MDR from the RUN CONFIGURATION block to populate the workbook MDR input field unless an explicitly approved higher-priority override is defined
 - preserve the template traffic-light rule tied to MDR:
   - **Green** if MDR >= 0.47%
   - **Yellow** if MDR >= 0.18% and MDR < 0.47%
   - **Red** if MDR < 0.18%
+
+TRAFFIC-LIGHT FONT COLOUR RULE:
+The font colour of cell C38 must match the traffic-light result.
+After determining the MDR classification, apply the correct font colour:
+
+  if MDR >= 0.0047  → font colour FF00B050  (Green)
+  if MDR >= 0.0018  → font colour FFFFC000  (Yellow)
+  if MDR <  0.0018  → font colour FFFF0000  (Red)
+  if MDR missing    → font colour FFFF0000  (Red, default)
+
+This must be applied at write time using openpyxl Font color.
+Do not hardcode a static red font on C38.
+The colour must reflect the actual MDR value for each run.
+
 - obey all template rules, mapping rules, and validation rules from the knowledge base sources
 - never redesign or simplify the workbook
 - never overwrite cells that should remain formulas
@@ -177,7 +209,7 @@ They must be followed exactly. Any deviation will produce a blank or corrupted f
 
 ## START OF RUN
 
-Campaign to process: `[UPDATE_CAMPAIGN_NAME]`  
-MDR for this run: `[UPDATE_MDR_PERCENTAGE]`
+Campaign to process: Read campaign name from the RUN CONFIGURATION block at the top of this prompt.
+MDR for this run: Read MDR percentage from the RUN CONFIGURATION block at the top of this prompt.
 
 Now read all Section A knowledge base files first, then Section B run inputs, then Section C campaign files, then generate the 2 required outputs.
