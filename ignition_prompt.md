@@ -30,6 +30,7 @@ These are the engine reference files that the AI must read **first** before read
 - Placeholder dictionary file: `placeholder_dictionary.md`
 - Cell-to-source mapping file: `cell_to_source_mapping.md`
 - Engine runbook file: `engine_runbook.md`
+- File ingestion skill file: `file_ingestion_skill.md`
 
 ### B. Campaign-Specific Manual Inputs for This Run
 These values are read from the RUN CONFIGURATION block at the top of this prompt.
@@ -98,6 +99,20 @@ Example: 1.30% → write 0.013 to cell C22.
 Never write the percentage string directly. Always write the decimal float.
 
 ### Step 3 — Read the campaign-specific uploaded files
+
+MANDATORY READING METHOD:
+
+Before writing any code to process the partner file, read file_ingestion_skill.md
+from the knowledge base. The entire partner file ingestion must follow the method
+defined in that skill file exactly.
+
+The partner file must be read using Python + pandas via the read_partner_file()
+function. Never attempt to open, browse, or preview the file directly.
+Never attempt to read it as plain text or markdown.
+
+Run check_deps() first to confirm all required libraries are installed.
+Then follow Rules 1 through 10 in file_ingestion_skill.md in order.
+
 After the static engine sources and manual inputs are fully read, read the campaign-specific uploaded files listed in Section C above.
 
 **Only the RFA and partner raw file are required for Phase 1.** If Phase 2 files (internal validation data, retention data, finance rate files) are not uploaded, do not treat this as a blocking error. Mark all cells that depend on Phase 2 files `PENDING_HUMAN_VALIDATION` and continue the Phase 1 run.

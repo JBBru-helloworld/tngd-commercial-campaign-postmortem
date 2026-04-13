@@ -15,6 +15,7 @@ The engine must always read inputs in this order:
    - placeholder dictionary
    - cell-to-source mapping
    - engine runbook
+   - file_ingestion_skill.md
    - framework summary
 2. **Ignition Prompt Run Configuration second**
    - campaign name / run label
@@ -243,34 +244,25 @@ artifact_tool, artifact.recalculate(), or artifact.export() anywhere in the scri
 
 ## Partner Data File Ingestion
 
-PARTNER FILE FORMAT RULE:
+PARTNER FILE INGESTION — MANDATORY METHOD:
 
-The partner data file may be provided in either of these formats:
-- CSV (.csv)
-- Excel (.xlsx or .xls)
+You must read the partner data file using Python + pandas via the exact method
+defined in file_ingestion_skill.md. Do not attempt to open, browse, or preview
+the file directly. Do not read it as plain text. The only accepted method is
+the read_partner_file() function defined in the skill file.
 
-The engine must detect the file format from the file extension and read it
-accordingly:
+Execute in this exact order:
+1. Run check_deps() to confirm pandas, openpyxl, and xlrd are available
+2. Run read_partner_file(filepath) to load the file into a dataframe
+3. Print the column list and first 3 rows for confirmation
+4. Run find_col() fuzzy matching to map all logical column roles
+5. Run clean_dataframe() to normalise types and strip currency symbols
+6. Filter CHARGE and REFUND rows
+7. Extract KPIs using safe_nunique() and safe_sum()
+8. Strip PII columns before any output
 
-```python
-import pandas as pd
-import os
-
-partner_file = "<filename from RUN CONFIGURATION>"
-ext = os.path.splitext(partner_file)[1].lower()
-
-if ext == '.csv':
-    df = pd.read_csv(partner_file)
-elif ext in ['.xlsx', '.xls']:
-    df = pd.read_excel(partner_file)
-else:
-    raise ValueError(f"Unsupported partner file format: {ext}. "
-                     f"Accepted formats are .csv, .xlsx, .xls")
-```
-
-Do not assume the file is always CSV.
-Do not attempt to open an Excel file with pd.read_csv() or vice versa.
-If the extension is unrecognised, stop and report the error before proceeding.
+Do not proceed to Excel build until all 8 steps are confirmed complete
+and KPI values are printed.
 
 ---
 

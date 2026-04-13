@@ -152,3 +152,27 @@ No render, recalculate, preview, or export calls after save.
 The output file must always be constructed by creating a new Workbook() and applying
 all structure, merges, formatting, formulas, and campaign values programmatically.
 Never use openpyxl.load_workbook() for any purpose in the population script.
+
+## File Reading Guardrails
+
+**G-FR-1 — Always use Python + pandas to read partner files.**
+Never open, browse, or preview the partner file directly.
+The only accepted reading method is the read_partner_file() function
+defined in file_ingestion_skill.md.
+
+**G-FR-2 — Always run check_deps() before the first file read.**
+If a required library is missing, install it before proceeding.
+
+**G-FR-3 — Always print column names and row count after reading.**
+Confirm the schema before any filtering or aggregation.
+
+**G-FR-4 — Always use fuzzy column matching.**
+Never hardcode exact column names from a prior run.
+Partner column names change between files.
+
+**G-FR-5 — Always clean amount columns before aggregation.**
+Strip RM symbols and commas. Convert to numeric with errors='coerce'.
+
+**G-FR-6 — If the file cannot be read after all fallback attempts, stop.**
+Report the exact filename, extension detected, and error type.
+Do not continue to Excel generation with unread partner data.
