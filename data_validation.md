@@ -3,18 +3,18 @@
 ## Validation Mode
 These rules are **campaign agnostic** and must be applied to the files and run parameters supplied in the current run only.
 
-## 1. Static-Source Read Gate [Phase 1]
+## 1. Static-Source Read Gate [Phase 2]
 - Confirm the static engine sources were read before any campaign-specific extraction begins.
 - If the workbook rules / notes or mapping assets were not read first, return `MANUAL_REVIEW_REQUIRED`.
 
-## 2. RFA Approval Gate [Phase 1]
+## 2. RFA Approval Gate [Phase 2]
 - The RFA number is only valid if the document status is explicitly **Approved**.
 - If status is not Approved, stop the workflow and return `MANUAL_REVIEW_REQUIRED`.
 
-## 3. Date Alignment [Phase 1]
+## 3. Date Alignment [Phase 2]
 Validate all three date views separately:
 1. **RFA approved date range**
-2. **Actual transaction date range in campaign raw/internal data**
+2. **Actual transaction date range in validated partner data file**
 3. **Workbook campaign period values**
 
 Flag a mismatch when any of the following occur:
@@ -22,13 +22,13 @@ Flag a mismatch when any of the following occur:
 - transaction dates end materially earlier or later than the declared campaign end date
 - workbook dates differ from the RFA and no BU override is provided
 
-Note: In Phase 1, date validation is performed using the RFA dates and the partner raw data transaction date range only. Internal data date verification is a Phase 2 step.
+Note: In Phase 2, date validation is performed using the RFA dates and the validated partner data file transaction date range. Internal data date verification is a Phase 1 human step.
 
-## 4. Funding Mechanism Check [Phase 1]
+## 4. Funding Mechanism Check [Phase 2]
 - Compare `Funding Mechanism` across the RFA, workbook, and any BU-confirmed source.
 - If they differ, output `MANUAL_REVIEW_REQUIRED`.
 
-## 5. KPI Extraction Rule [Phase 1 — Partner-Derived Provisional Values]
+## 5. KPI Extraction Rule [Phase 2 — AI-Populated from Validated Partner Data File]
 Primary campaign KPIs must be based on successful campaign charges unless a finance-approved net rule is supplied:
 - Campaign Participants = distinct users on CHARGE rows
 - Campaign TPV = RM sum on CHARGE rows
@@ -36,31 +36,31 @@ Primary campaign KPIs must be based on successful campaign charges unless a fina
 
 The partner data file may be provided as .csv, .xlsx, or .xls. Detect the file format from the file extension and read it with the appropriate method (pd.read_csv for .csv; pd.read_excel for .xlsx or .xls). Do not assume the file is always CSV.
 
-In Phase 1, extract KPIs from the partner CHARGE rows only. These values are provisional and must be labeled as partner-derived provisional in the output. Internal verification against the database is a Phase 2 step and will be completed by the human reviewer.
+In Phase 2, extract KPIs from the validated partner data file CHARGE rows. These values are treated as final validated values because Phase 1 human validation has already been completed. If a value cannot be extracted, write `MANUAL_INPUT_REQUIRED`.
 
 Refunds must be summarized separately and disclosed in the validation output.
 
-## 6. Mechanic / Wave Validation [Phase 2]
-This rule requires internal data and is a Phase 2 validation step. The AI must skip this rule and mark dependent fields `PENDING_HUMAN_VALIDATION`.
+## 6. Mechanic / Wave Validation [Phase 1]
+This rule requires internal data and is a Phase 1 human validation step. The AI must skip this rule and mark dependent fields `MANUAL_INPUT_REQUIRED` if values are not present in the validated partner data file.
 
 Where the RFA defines multiple mechanic waves, validate actual observed performance by wave.
 - Compare actual performance by campaign_id / mechanic against the RFA-defined caps or limits.
 - Flag under-delivery, over-redemption, or unexplainable spillover.
 
-## 7. TPV Reconciliation [Phase 2]
-This rule requires internal data and is a Phase 2 validation step.
+## 7. TPV Reconciliation [Phase 1]
+This rule requires internal data and is a Phase 1 human validation step completed before the AI run.
 
-If both partner and internal TPV are available:
+The human reviewer reconciles partner TPV against internal database records in Phase 1 and writes the reconciled values into the validated partner data file.
+- If reconciled internal TPV values are present in the validated partner data file, the AI reads and uses them.
+- The AI does not perform this reconciliation itself.
+- If reconciled values are absent from the validated partner data file, set internal TPV reconciliation to `MANUAL_INPUT_REQUIRED`.
+
+If both partner and internal TPV are available in the validated file:
 - `TPV variance % = (Internal TPV - Partner TPV) / Internal TPV`
 - If absolute variance > **5%**, raise `High Variance Warning`
 
-In Phase 1, if only partner data is available:
-- Set internal TPV reconciliation to `PENDING_HUMAN_VALIDATION` (not `DATA_NOT_FOUND`).
-- Note that the human reviewer will complete this reconciliation in Phase 2 by validating the partner file against internal database records.
-- Do not fabricate a variance %.
-
-## 8. Budget Check [Phase 2]
-This rule requires finance inputs and is a Phase 2 validation step. The AI must skip this rule and mark dependent fields `PENDING_HUMAN_VALIDATION`.
+## 8. Budget Check [Phase 1]
+This rule requires finance inputs and is a Phase 1 human validation step. The AI must skip this rule and mark dependent fields `MANUAL_INPUT_REQUIRED` if not present in the validated partner data file.
 
 Compare:
 - Approved Budget from RFA
@@ -71,7 +71,7 @@ Rules:
 - flag if `CPAM Cost > Approved Budget`
 - flag if total campaign cost cannot be validated because finance inputs are missing
 
-## 9. MDR Input and Traffic-Light Validation [Phase 1]
+## 9. MDR Input and Traffic-Light Validation [Phase 2]
 Validate the campaign-specific MDR input as follows:
 - MDR must be supplied either in the ignition prompt run configuration or in an explicitly approved finance / BU source
 - MDR must be numeric and stored as a percentage input
@@ -82,27 +82,27 @@ Validate the campaign-specific MDR input as follows:
   - **Red** if MDR < 0.18%
 - if MDR is missing, mark the MDR input `MANUAL_INPUT_REQUIRED` and treat any dependent revenue or traffic-light result as unresolved
 
-## 10. Direct-Cost Dependency Check [Phase 2]
-This rule requires finance inputs and is a Phase 2 validation step. The AI must mark all direct-cost rate inputs `PENDING_HUMAN_VALIDATION`.
+## 10. Direct-Cost Dependency Check [Phase 1]
+This rule requires finance inputs and is a Phase 1 human validation step. The AI must mark all direct-cost rate inputs `MANUAL_INPUT_REQUIRED` if not present in the validated partner data file.
 
 Rows for:
-- MDR — Phase 1 (populated from ignition prompt)
-- Avg Reload Cost % — Phase 2 (mark `PENDING_HUMAN_VALIDATION`)
-- Avg Cloud Cost / Txn — Phase 2 (mark `PENDING_HUMAN_VALIDATION`)
-- Avg PLSA Cost / Txn — Phase 2 (mark `PENDING_HUMAN_VALIDATION`)
+- MDR — Phase 2 (populated from ignition prompt)
+- Avg Reload Cost % — Phase 1 (mark `MANUAL_INPUT_REQUIRED` if absent)
+- Avg Cloud Cost / Txn — Phase 1 (mark `MANUAL_INPUT_REQUIRED` if absent)
+- Avg PLSA Cost / Txn — Phase 1 (mark `MANUAL_INPUT_REQUIRED` if absent)
 
 must be validated against the run configuration, finance source workbook, or explicit BU / finance-provided values as applicable.
 
-If Phase 2 rate inputs are not provided by the human reviewer:
-- mark these inputs `PENDING_HUMAN_VALIDATION`
-- state that direct cost, total cost, GP, ROI, and dependent results will remain unresolved until Phase 2 is complete
+If Phase 1 rate inputs are not present in the validated partner data file:
+- mark these inputs `MANUAL_INPUT_REQUIRED`
+- state that direct cost, total cost, GP, ROI, and dependent results will remain unresolved until Phase 1 values are supplied
 
-## 11. Retention Integrity [Phase 2]
-This rule requires the internal retention source and is a Phase 2 validation step. The AI must mark all retention cells `PENDING_HUMAN_VALIDATION`.
+## 11. Retention Integrity [Phase 1]
+This rule requires the internal retention source and is a Phase 1 human validation step. The AI must mark all retention cells `MANUAL_INPUT_REQUIRED` if values are not present in the validated partner data file.
 
 - Retention must align to the campaign cohort and actual post-campaign months.
 - Do not use RFA assumption rates as actual observed retention.
-- If retention file is missing, all retention cells must be marked `PENDING_HUMAN_VALIDATION`.
+- If retention values are absent from the validated partner data file, all retention cells must be marked `MANUAL_INPUT_REQUIRED`.
 
 ## 12. PII Protection [All Phases]
 Before output:

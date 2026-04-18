@@ -1,230 +1,368 @@
-# Ignition Prompt: Run the TNGD Campaign Post-Mortem Engine
+# TNGD Campaign Post-Mortem Engine — Ignition Prompt
 
-## ✏️ RUN CONFIGURATION — UPDATE THESE BEFORE EVERY RUN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✏️ RUN CONFIGURATION — THE ONLY SECTION YOU EDIT EACH RUN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-CAMPAIGN NAME:     [UPDATE — e.g. 241122 COE RM107.5K Trip.com Launch Campaign]
-MDR PERCENTAGE:    [UPDATE — e.g. 1.30%]
-RFA FILE NAME:     [UPDATE — e.g. RFA-230752_Tripcom.pdf]
-PARTNER DATA FILE: [UPDATE — e.g. Trip AMA Nov 2024.csv or Trip AMA Nov 2024.xlsx]
+## HOW TO USE THIS SECTION
 
-> These are the only four things you need to change each run.
-> Everything below this line is fixed engine logic — do not edit it.
+For each campaign you want to process, fill in one CAMPAIGN BLOCK below.
+Copy and paste additional blocks if you have more than one campaign.
+Each block must have a unique CAMPAIGN ID (just a number: 1, 2, 3...).
+The CAMPAIGN ID is how the engine knows which RFA belongs to which partner file.
+
+For each campaign you must also declare the MDR.
+MDR is written as a percentage (e.g. 1.30%) — the engine converts it automatically.
 
 ---
 
-Use this prompt to run a new campaign post-mortem. The four run-configuration values above are the only fields that change between runs.
+### CAMPAIGN BLOCK 1
+
+```
+CAMPAIGN ID:        1
+CAMPAIGN NAME:      [UPDATE — e.g. 241122 COE RM107.5K Trip.com Launch Campaign]
+MDR PERCENTAGE:     [UPDATE — e.g. 1.30%]
+RFA FILE NAME:      [UPDATE — e.g. RFA-230752_Tripcom.pdf]
+PARTNER DATA FILE:  [UPDATE — e.g. Trip AMA Nov 2024.xlsx]
+```
+
+### CAMPAIGN BLOCK 2
+
+```
+CAMPAIGN ID:        2
+CAMPAIGN NAME:      [UPDATE — e.g. 241201 COE RM50K Grab Launch Campaign]
+MDR PERCENTAGE:     [UPDATE — e.g. 0.80%]
+RFA FILE NAME:      [UPDATE — e.g. RFA-231001_Grab.pdf]
+PARTNER DATA FILE:  [UPDATE — e.g. Grab AMA Dec 2024.csv]
+```
+
+### CAMPAIGN BLOCK 3
+
+```
+CAMPAIGN ID:        3
+CAMPAIGN NAME:      [UPDATE or DELETE THIS BLOCK IF NOT NEEDED]
+MDR PERCENTAGE:     [UPDATE or DELETE THIS BLOCK IF NOT NEEDED]
+RFA FILE NAME:      [UPDATE or DELETE THIS BLOCK IF NOT NEEDED]
+PARTNER DATA FILE:  [UPDATE or DELETE THIS BLOCK IF NOT NEEDED]
+```
+
+### CAMPAIGN BLOCK 4
+
+```
+CAMPAIGN ID:        4
+CAMPAIGN NAME:      [UPDATE or DELETE THIS BLOCK IF NOT NEEDED]
+MDR PERCENTAGE:     [UPDATE or DELETE THIS BLOCK IF NOT NEEDED]
+RFA FILE NAME:      [UPDATE or DELETE THIS BLOCK IF NOT NEEDED]
+PARTNER DATA FILE:  [UPDATE or DELETE THIS BLOCK IF NOT NEEDED]
+```
+
+> Delete any unused campaign blocks before running.
+> For a single campaign run, keep only CAMPAIGN BLOCK 1.
+> The engine processes one campaign at a time, in order, and produces
+> one Excel file per campaign before moving to the next.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ENGINE LOGIC BELOW — DO NOT EDIT ANYTHING BELOW THIS LINE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+---
+
+## PHASE DEFINITIONS
+
+### Phase 1 — Human Data Validation (happens BEFORE this engine runs)
+
+The team member validates the partner data file against internal database records.
+They confirm KPIs, reconcile TPV, verify transaction counts, and add any internal
+data (retention rates, finance cost rates, merchant impact data) directly into
+the partner data file or a separate validated data file before uploading.
+
+The AI engine does NOT run during Phase 1. Phase 1 is entirely human-led.
+
+### Phase 2 — AI Engine Run (this prompt)
+
+The AI reads the validated partner data file and the approved RFA, then builds
+the fully populated Excel post-mortem workbook. Because the data has already
+been validated by the human in Phase 1, the AI populates KPIs as final values
+rather than provisional estimates.
+
+Fields that the human could not validate or that require further BU input are
+marked MANUAL_INPUT_REQUIRED in the output.
+
+---
+
+## ACCESS FAILURE RULE
+
+If any RFA or partner data file listed in the RUN CONFIGURATION cannot be
+accessed, read, or parsed, stop that campaign immediately and report:
+
+- Campaign ID that failed
+- Exact filename that failed
+- Whether the failure was file not found, unreadable format, or parse error
+
+Move to the next campaign block if one exists.
+Do not skip the failure silently.
+Do not continue building the Excel file for a campaign with unread source files.
 
 ---
 
 ## ENGINE CONFIGURATION — FIXED, DO NOT EDIT
 
-### A. Knowledge Base / Static Engine Sources
-These are the engine reference files that the AI must read **first** before reading the run configuration or campaign-specific uploads. Update these names only if your stored engine files have been renamed.
+### Knowledge Base Files (Static Engine Sources)
 
-- Master template workbook: `campaign_file_TEMPLATE.xlsx`
-- Framework summary file: `framework_summary.md`
-- Guardrails file: `guardrails.md`
-- Instructions file: `instructions.md`
-- Template schema file: `template_schema.md`
-- Data validation rules file: `data_validation.md`
-- Placeholder dictionary file: `placeholder_dictionary.md`
-- Cell-to-source mapping file: `cell_to_source_mapping.md`
-- Engine runbook file: `engine_runbook.md`
-- File ingestion skill file: `file_ingestion_skill.md`
+The engine must read all of these before processing any campaign:
 
-### B. Campaign-Specific Manual Inputs for This Run
-These values are read from the RUN CONFIGURATION block at the top of this prompt.
+- `framework_summary.md`
+- `guardrails.md`
+- `instructions.md`
+- `template_schema.md`
+- `data_validation.md`
+- `placeholder_dictionary.md`
+- `cell_to_source_mapping.md`
+- `engine_runbook.md`
+- `file_ingestion_skill.md`
 
-- Campaign name / label: Read campaign name from the RUN CONFIGURATION block at the top of this prompt.
-- MDR percentage for this run: Read MDR percentage from the RUN CONFIGURATION block at the top of this prompt.
-- MDR source / approver note, if applicable: `[UPDATE_MDR_SOURCE_OR_NOTE]`
+CONFIRMATION REQUIRED:
+After reading all knowledge base files, output this exact line before proceeding:
 
-### C. Campaign-Specific Files for This Run (Phase 1 Required + Phase 2 Optional)
-These are the uploaded files that will change every time this prompt is used.
+"Knowledge base loaded: framework_summary.md, guardrails.md, instructions.md,
+template_schema.md, data_validation.md, placeholder_dictionary.md,
+cell_to_source_mapping.md, engine_runbook.md, file_ingestion_skill.md"
 
-- RFA / Sage approval file: Read RFA file name from the RUN CONFIGURATION block at the top of this prompt. — **[REQUIRED — Phase 1]**
-- Partner raw data file(s): Read partner data file name from the RUN CONFIGURATION block at the top of this prompt. The file may be .csv, .xlsx, or .xls — detect the format from the file extension and read it with the appropriate method. If the extension is not .csv, .xlsx, or .xls, stop immediately and report under the ACCESS FAILURE RULE. — **[REQUIRED — Phase 1]**
-- Internal validation / transaction data file(s): `[UPDATE_FILENAME_INTERNAL_VALIDATION_FILE_OR_FILES]` — **[OPTIONAL — Phase 2, human-completed]**
-- Internal retention data file(s), if provided: `[UPDATE_FILENAME_RETENTION_FILE_OR_FILES]` — **[OPTIONAL — Phase 2, human-completed]**
-- Finance rate / cost input file(s), if provided: `[UPDATE_FILENAME_FINANCE_FILE_OR_FILES]` — **[OPTIONAL — Phase 2, human-completed]**
+Do not begin processing any campaign until this confirmation is output.
 
 ---
 
-## PRIMARY INSTRUCTION
+## MULTI-CAMPAIGN PROCESSING RULES
 
-Please initialize and run the **TNGD Campaign Post-Mortem Engine** for the campaign listed in the RUN CONFIGURATION block at the top of this prompt.
+- Process campaigns one at a time, in CAMPAIGN ID order (1, 2, 3, 4...)
+- Complete all chunks for Campaign 1 before starting Campaign 2
+- Produce and save the Excel file for each campaign before moving to the next
+- If one campaign fails, log the failure and continue to the next campaign
+- Do not mix data between campaigns under any circumstance
+- After all campaigns are processed, produce one combined chat summary
+  covering all campaigns run in the session
 
-You must execute the work in the following order:
+---
 
-### Step 1 — Read the Knowledge Base / Static Engine Sources first
-Before touching any campaign-specific data, read and absorb all of the static engine sources listed in Section A above.
+## EXECUTION — FOR EACH CAMPAIGN
 
-These files are the permanent operating rules for the engine. Treat them as the source of truth for:
-- workbook structure
-- formatting preservation
-- placeholder definitions
-- cell-to-source logic
-- rules-column interpretation
-- validation rules
-- reconciliation rules
-- write-versus-keep-formula behavior
-- final QA checks
+Repeat these chunks for every campaign block in the RUN CONFIGURATION.
+Clearly label each chunk with the Campaign ID being processed.
+Example: "CAMPAIGN 1 — CHUNK 1", "CAMPAIGN 1 — CHUNK 2", etc.
 
-The master template workbook must be treated as the design source of truth. Preserve the same:
-- workbook structure
-- worksheet names
-- colours
-- borders
-- merged cells
-- formulas
-- notes
-- layout
-- overall visual design
+---
 
-Read the workbook tabs and embedded engine tabs first, including any helper, placeholder, mapping, or runbook tabs contained inside the workbook.
+### CHUNK 1 — RFA Validation
 
-### Step 2 — Read the campaign-specific manual inputs from this prompt
-After the static engine sources are fully read, capture the current-run values from the RUN CONFIGURATION block at the top of this prompt.
+_(Label: CAMPAIGN [ID] — CHUNK 1)_
+
+Read the RFA file for this campaign.
+Extract and report:
+
+- Document status — must be Approved. If not, stop this campaign and move to next.
+- Campaign name
+- RFA ID / number
+- Partner name
+- Campaign start date and end date
+- Funding mechanism
+- Approved amount (RM)
+- Cost centre
+- Primary mechanic text
+- Secondary mechanic text (if present)
 
 Rules:
-- use the MDR percentage from the RUN CONFIGURATION block as the campaign-specific MDR input for this run
-- do not infer, estimate, or reuse MDR from prior campaigns
-- if MDR is missing from the RUN CONFIGURATION block and no approved supporting source explicitly provides it, mark the MDR field `MANUAL_INPUT_REQUIRED`
-- if both a prompt-provided MDR and a file-provided MDR exist, validate the mismatch and follow the source hierarchy defined in the runbook
+
+- Only use the RFA if status is explicitly Approved
+- Do not carry over any field from a prior campaign block
+- Confirm the RFA filename matches the one declared in this campaign's block
+
+Report as:
+"CAMPAIGN [ID] CHUNK 1 COMPLETE — RFA: [name], ID: [rfa_id],
+Status: Approved, Dates: [start] to [end], Amount: RM[x]"
+
+---
+
+### CHUNK 2 — Partner Data File Ingestion and KPI Extraction
+
+_(Label: CAMPAIGN [ID] — CHUNK 2)_
+
+Read the partner data file for this campaign using Python + pandas.
+Follow file_ingestion_skill.md exactly. Run check_deps() first.
+
+File format detection:
+
+- .csv → read with read_csv_safe()
+- .xlsx → read with read_excel_safe(), engine='openpyxl'
+- .xls → read with read_excel_safe(), engine='xlrd'
+
+After reading, print the column list and first 3 rows for confirmation.
+Use fuzzy column matching (find_col()) — never hardcode column names.
+
+Extract from CHARGE rows only:
+
+- Campaign Participants = distinct userid count
+- Campaign TPV = sum of transaction_amount
+- Campaign Txn # = distinct transaction_id count
+- CPAM Cost = sum of benefit_amount
+
+Summarise REFUND rows separately:
+
+- Refund count, refund TPV, refund benefit amount
+
+Strip all PII before any output.
+Never print individual rows.
+
+If the partner file contains additional validated fields that the human added
+during Phase 1 (e.g. retention rates, finance cost rates, merchant impact data),
+extract those as well and map them to the appropriate template fields.
+
+Report as:
+"CAMPAIGN [ID] CHUNK 2 COMPLETE — Participants: [n], TPV: RM[x],
+Txn #: [n], CPAM Cost: RM[x]. Refunds: [n] txns, RM[x] TPV."
+
+---
+
+### CHUNK 3 — MDR and Traffic-Light Classification
+
+_(Label: CAMPAIGN [ID] — CHUNK 3)_
+
+Read the MDR from the campaign's block in the RUN CONFIGURATION.
 
 MDR CONVERSION RULE:
-The MDR in the RUN CONFIGURATION block is written as a percentage (e.g. 1.30%).
-Before writing it to the Excel file, convert it to a decimal by dividing by 100.
-Example: 1.30% → write 0.013 to cell C22.
-Never write the percentage string directly. Always write the decimal float.
+Convert percentage to decimal before writing.
+Example: 1.30% → 0.013
+Never write the percentage string. Always write the decimal float.
 
-### Step 3 — Read the campaign-specific uploaded files
+Traffic-light classification:
 
-MANDATORY READING METHOD:
+- Green if MDR >= 0.0047
+- Yellow if MDR >= 0.0018 and MDR < 0.0047
+- Red if MDR < 0.0018
+- Missing → mark C22 MANUAL_INPUT_REQUIRED, traffic light unresolved
 
-Before writing any code to process the partner file, read file_ingestion_skill.md
-from the knowledge base. The entire partner file ingestion must follow the method
-defined in that skill file exactly.
+Traffic-light font colour for cell C38:
 
-The partner file must be read using Python + pandas via the read_partner_file()
-function. Never attempt to open, browse, or preview the file directly.
-Never attempt to read it as plain text or markdown.
+- Green → FF00B050
+- Yellow → FFFFC000
+- Red → FFFF0000
+- Missing → FFFF0000 (default)
 
-Run check_deps() first to confirm all required libraries are installed.
-Then follow Rules 1 through 10 in file_ingestion_skill.md in order.
+Apply font colour at write time using openpyxl Font color.
+Never hardcode a static colour on C38.
 
-After the static engine sources and manual inputs are fully read, read the campaign-specific uploaded files listed in Section C above.
+Report as:
+"CAMPAIGN [ID] CHUNK 3 COMPLETE — MDR: [x]% (0.0[x]),
+Traffic Light: [Green/Yellow/Red]"
 
-**Only the RFA and partner raw file are required for Phase 1.** If Phase 2 files (internal validation data, retention data, finance rate files) are not uploaded, do not treat this as a blocking error. Mark all cells that depend on Phase 2 files `PENDING_HUMAN_VALIDATION` and continue the Phase 1 run.
+---
 
-Process uploaded files in this priority order:
-1. RFA / Sage approval file — **[REQUIRED — Phase 1]**
-2. Partner raw data file(s) — **[REQUIRED — Phase 1]**
-3. Internal validation / transaction data file(s) — [OPTIONAL — Phase 2, human-completed]
-4. Retention data file(s), if available — [OPTIONAL — Phase 2, human-completed]
-5. Finance rate / cost file(s), if available — [OPTIONAL — Phase 2, human-completed]
+### CHUNK 4 — Excel Build and Population
 
-### Step 4 — Apply the engine rules
-When processing the campaign files:
-- confirm the RFA approval status before using RFA values as approved source data
-- use the RFA as source of truth for approved campaign identity and approved budget fields
-- use internal validation / transaction data as source of truth for final reconciled performance metrics when it conflicts with partner raw data
-- use partner raw data as supporting evidence and variance-check source
-- use retention files only for actual observed retention values
-- use finance input files only for finance-controlled fields
-- use the current-run MDR from the RUN CONFIGURATION block to populate the workbook MDR input field unless an explicitly approved higher-priority override is defined
-- preserve the template traffic-light rule tied to MDR:
-  - **Green** if MDR >= 0.47%
-  - **Yellow** if MDR >= 0.18% and MDR < 0.47%
-  - **Red** if MDR < 0.18%
+_(Label: CAMPAIGN [ID] — CHUNK 4)_
 
-TRAFFIC-LIGHT FONT COLOUR RULE:
-The font colour of cell C38 must match the traffic-light result.
-After determining the MDR classification, apply the correct font colour:
+Only begin after Chunks 1, 2, and 3 are confirmed complete for this campaign.
 
-  if MDR >= 0.0047  → font colour FF00B050  (Green)
-  if MDR >= 0.0018  → font colour FFFFC000  (Yellow)
-  if MDR <  0.0018  → font colour FFFF0000  (Red)
-  if MDR missing    → font colour FFFF0000  (Red, default)
+Follow the Excel Population Technical Runbook in engine_runbook.md exactly.
 
-This must be applied at write time using openpyxl Font color.
-Do not hardcode a static red font on C38.
-The colour must reflect the actual MDR value for each run.
+Build rules:
 
-- obey all template rules, mapping rules, and validation rules from the knowledge base sources
-- never redesign or simplify the workbook
-- never overwrite cells that should remain formulas
-- never estimate missing values
-- mark unresolved values clearly using `DATA_NOT_FOUND` or `MANUAL_INPUT_REQUIRED`, whichever is appropriate under the engine rules
-- clearly flag discrepancies between partner-reported values and internal values
+- Use Workbook() to create a fresh file. Never use load_workbook().
+- Apply all column widths, row heights, merge ranges, static labels, notes,
+  formatting, and formula strings exactly as specified in the runbook.
+- Set rows 41 and 43 as hidden:
+  ws.row_dimensions[41].hidden = True
+  ws.row_dimensions[43].hidden = True
+- Write all fields that have validated data from Chunks 1 and 2 as final values.
+- Write MANUAL_INPUT_REQUIRED for any field the human could not validate in Phase 1.
+- Write the MDR decimal value from Chunk 3 to cell C22.
+- Apply the traffic-light font colour from Chunk 3 to cell C38.
+- Never call SpreadsheetArtifact, artifact_tool, artifact.recalculate(),
+  artifact.export(), or artifact.render().
+- Never overwrite formula cells: C21, C23, C25, C29, C30, C38, C42.
+- Never write MDR as a percentage string.
 
-### Step 5 — Produce the final outputs
-Your output must be exactly **2 things only**:
+Output filename format:
 
-#### Output 1 — Partially completed Excel file (Phase 1 output)
-Create and return the **partially completed Excel file** for this campaign, ready for Phase 2 human validation.
+```
+campaign_postmortem_[CAMPAIGN_ID]_[CAMPAIGN_NAME]_phase2.xlsx
+```
 
-Requirements:
-- Phase 1 sections must be fully populated: campaign identity block (from RFA), provisional partner KPIs (from CHARGE rows), MDR rate (from ignition prompt), and traffic-light classification
-- All Phase 2 sections must be clearly marked `PENDING_HUMAN_VALIDATION` for the human reviewer
-- it must match the master template design exactly
-- it must preserve the same formatting, colours, formulas, structure, and worksheet design
-- it must preserve formula-driven cells wherever the template requires formulas to remain intact
+Example: `campaign_postmortem_1_241122_COE_Trip.com_phase2.xlsx`
 
-#### Output 2 — Summary in chat
-Provide a concise but complete summary in chat that includes:
-- campaign identification details used
-- files successfully read
-- MDR percentage used for the run
-- whether MDR came from the prompt, a supporting file, or both
-- traffic-light result
-- major findings
-- reconciled KPI observations
-- discrepancies found between partner and internal data
-- missing files
-- incomplete fields
-- unresolved items requiring manual input or review
-- any important validation warnings
+Sanitise filename: replace spaces and special characters with underscores.
+Call wb.save(output_filename) once. Print the saved filename. Stop.
 
-Do not output a separate third deliverable. The response must only consist of:
-1. the completed Excel file
-2. the chat summary
+Report as:
+"CAMPAIGN [ID] CHUNK 4 COMPLETE — Excel saved: [filename]"
+
+---
+
+### CHUNK 5 — Campaign Summary
+
+_(Label: CAMPAIGN [ID] — CHUNK 5)_
+
+After the Excel file for this campaign is confirmed saved, produce a brief
+per-campaign summary covering:
+
+- Campaign ID and name
+- RFA ID and approval status
+- Partner file used
+- MDR and traffic-light result
+- Fields successfully populated from validated data
+- Fields marked MANUAL_INPUT_REQUIRED and why
+- Refund summary
+- Any data warnings or errors encountered
+
+Then move to the next campaign block if one exists.
+
+---
+
+## FINAL COMBINED SUMMARY
+
+After all campaigns in the session are processed, produce one combined summary:
+
+- Total campaigns attempted
+- Total Excel files successfully produced
+- List of campaigns that failed and the failure reason
+- Any cross-campaign observations (e.g. same merchant appearing in multiple campaigns)
+- Any validation warnings that apply across campaigns
 
 ---
 
 ## EXECUTION GUARDRAILS
 
-- Do not use sample values from template examples as actual campaign results.
-- Do not carry over values from prior campaigns.
-- Do not guess or backfill missing fields without a valid source.
-- Do not change row order, headers, formulas, worksheet names, workbook structure, or the rules / notes logic.
-- Do not overwrite the template traffic-light formula if the workbook already derives it from MDR.
-- Do not include PII in the final workbook summary output unless the template explicitly requires a non-PII business identifier.
-- If a required file is missing, continue where possible, but clearly flag the gap in the chat summary and in the workbook where applicable under engine rules.
-- If conflicting values are found, prioritize internal validated data for final KPI outputs and log the variance in the summary.
-- If MDR is missing or conflicting, explicitly flag it in the chat summary.
+- Never carry data, values, or column mappings from one campaign to the next
+- Never guess or estimate missing values — use MANUAL_INPUT_REQUIRED
+- Never use sample values from prior campaigns or template examples
+- Never include PII in any output
+- Never call wb.save() more than once per campaign
+- Never use artifact_tool or SpreadsheetArtifact
+- Never use load_workbook() — always build fresh with Workbook()
+- Never overwrite formula cells
+- If conflicting values exist in the partner file, use the most recently
+  validated value and note the conflict in the campaign summary
+- One Excel file per campaign. One chat summary per session covering all campaigns.
 
 ### Excel Population Guardrails
 
-These rules apply to the Python script that populates the Excel output file.
-They must be followed exactly. Any deviation will produce a blank or corrupted file.
-
-- Build the output from scratch using `Workbook()`. Do not open any template file.
-  Never use `openpyxl.load_workbook()` anywhere in the script.
-- Never call `SpreadsheetArtifact`, `artifact_tool`, `artifact.recalculate()`,
-  `artifact.export()`, or `artifact.render()`. These destroy the output file.
-- Never delete any sheet from the workbook.
-- Never set fill, font, border, number_format, or alignment on any cell.
-- Always write to the top-left anchor cell of merged ranges only.
-- Always check `is_formula()` before writing. Never overwrite a formula cell.
-- Write MDR as a plain decimal (e.g. `0.013`), never as a percentage string.
-- Call `wb.save(output_path)` once. Print the path. End the script.
+- Build from scratch using Workbook() only
+- Never use load_workbook()
+- Never call SpreadsheetArtifact, artifact_tool, artifact.recalculate(),
+  artifact.export(), or artifact.render()
+- Always write to top-left anchor cell of merged ranges only
+- Never overwrite formula cells: C21, C23, C25, C29, C30, C38, C42
+- Write MDR as decimal float only — never as a percentage string
+- Set rows 41 and 43 hidden after row height step
+- Call wb.save() once per campaign. Print path. Stop.
 
 ---
 
-## START OF RUN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+START
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Campaign to process: Read campaign name from the RUN CONFIGURATION block at the top of this prompt.
-MDR for this run: Read MDR percentage from the RUN CONFIGURATION block at the top of this prompt.
-
-Now read all Section A knowledge base files first, then Section B run inputs, then Section C campaign files, then generate the 2 required outputs.
+Read all knowledge base files first.
+Output the confirmation line.
+Then process each campaign block in order, Chunks 1 through 5.
+Do not start a new campaign until the previous one is fully complete.
+After all campaigns, produce the combined summary.

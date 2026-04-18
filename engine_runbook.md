@@ -23,45 +23,59 @@ The engine must always read inputs in this order:
    - MDR source / approver note, if supplied
    - campaign-specific file names for the current run
 3. **Campaign-Specific Uploaded Files third**
-   - RFA / Sage approval file — **Phase 1 Required**
-   - partner raw data file(s) — **Phase 1 Required**
-   - internal validation / transaction data file(s) — Phase 2 (human-completed)
-   - retention data file(s), if provided — Phase 2 (human-completed)
-   - finance rate / cost input file(s), if provided — Phase 2 (human-completed)
+   - RFA / Sage approval file — **Phase 2 Required**
+   - validated partner data file(s) — **Phase 2 Required**
+   - internal validation / transaction data file(s) — Phase 1 (human-completed, outputs in validated partner data file)
+   - retention data file(s), if provided — Phase 1 (human-completed, outputs in validated partner data file)
+   - finance rate / cost input file(s), if provided — Phase 1 (human-completed, outputs in validated partner data file)
 
 The master template workbook is the design source of truth. Preserve the same workbook structure, sheet names, colours, borders, merged cells, formulas, notes, layout, and overall visual design.
 
 ## Two-Phase Workflow Overview
 
-The engine runs in two distinct phases. The AI executes Phase 1 only. Phase 2 is completed by a human team member.
+The engine runs in two distinct phases. The AI executes **Phase 2 only**. Phase 1 is completed by a human team member before the AI runs.
 
-### Phase 1 — AI Run
-- **Inputs:** RFA file + partner raw data file + ignition prompt parameters (campaign name, MDR).
-- **What the AI does:** Populates all fields derivable from the RFA (campaign identity block) and partner raw data (provisional KPIs), writes the MDR, evaluates the traffic-light classification, and writes `PENDING_HUMAN_VALIDATION` to all Phase 2 fields.
-- **Output:** A partially completed Excel workbook ready for Phase 2 human validation.
+### Phase 1 — Human Validation (before AI run)
+- **Who:** A team member validates the partner data file against internal database records.
+- **What they do:** Confirms KPIs, reconciles TPV, verifies transaction counts, and adds any internal data directly into the partner data file or a separate validated data file. Fills in: internal KPI reconciliation, internal TPV / participants / transaction counts, all retention data, all finance cost rates, and all merchant-impact / BI data.
+- **Inputs for Phase 1:** Internal TXN data, internal retention files, finance rate files, BI / merchant-impact dataset.
+- **Output:** A validated partner data file ready for the AI engine run.
 
-### Phase 2 — Human Validation
-- **Who:** A team member receives the Phase 1 output Excel file.
-- **What they do:** Validates the partner file against internal database files and fills in all remaining sections: internal KPI reconciliation, internal TPV / participants / transaction counts, all retention data, all finance cost rates, and all merchant-impact / BI data.
-- **Inputs for Phase 2:** Internal TXN data, internal retention files, finance rate files, BI / merchant-impact dataset.
+### Phase 2 — AI Engine Run (this runbook)
+- **Inputs:** Validated partner data file + RFA file + ignition prompt parameters (campaign name, MDR, Campaign ID).
+- **What the AI does:** Reads the validated partner data file and approved RFA, populates all campaign identity fields, writes final validated KPI values, writes the MDR, evaluates the traffic-light classification, and writes `MANUAL_INPUT_REQUIRED` to all fields not present in the validated partner data file.
+- **Output:** A fully populated Phase 2 Excel workbook per campaign, plus a combined chat summary.
 
 ### AI Behavior at Phase Boundary
-- The AI must **never** block, error, or stop because internal data, retention files, finance files, or BI files are absent.
-- If a Phase 2 file is missing, the AI writes `PENDING_HUMAN_VALIDATION` to all cells that depend on that file and continues.
-- `PENDING_HUMAN_VALIDATION` signals to the human reviewer that the field is expected to be filled — it is not a missing-data error.
-- The AI must **only** stop and return `MANUAL_REVIEW_REQUIRED` if the Phase 1 required files (RFA or partner raw data) are missing or if the RFA is not in Approved status.
+- The AI must **never** block, error, or stop because internal data, retention files, finance files, or BI files are absent from the uploads. These are Phase 1 human tasks.
+- If a value is not present in the validated partner data file, the AI writes `MANUAL_INPUT_REQUIRED` to that cell and continues.
+- `MANUAL_INPUT_REQUIRED` signals to the human reviewer that the field requires manual follow-up — it is not a data error.
+- The AI must **only** stop and return `MANUAL_REVIEW_REQUIRED` if the Phase 2 required files (RFA or validated partner data file) are missing or if the RFA is not in Approved status.
+
+## Multi-Campaign Processing Rules
+
+- Process campaigns one at a time in CAMPAIGN ID order
+- Complete all chunks for Campaign N before starting Campaign N+1
+- Produce and save one Excel file per campaign before moving to the next
+- If one campaign fails, log the failure and continue to the next
+- Never mix data, column mappings, or values between campaigns
+- After all campaigns are processed, produce one combined chat summary
+- Output filename format per campaign:
+  `campaign_postmortem_[CAMPAIGN_ID]_[CAMPAIGN_NAME]_phase2.xlsx`
+  Example: `campaign_postmortem_1_241122_COE_Trip.com_phase2.xlsx`
+- Sanitise filenames: replace spaces and special characters with underscores
 
 ## Core execution rules
 
 - Duplicate the master template before population.
 - Read the static engine sources before touching the campaign-specific uploads.
 - Read the workbook's embedded **Placeholder Dictionary**, **Cell-to-Source Mapping**, and **Engine Runbook** tabs before writing any output cells.
-- Register the current-run MDR from the ignition prompt before populating the workbook.
+- Register the current-run MDR and Campaign ID from the ignition prompt before populating the workbook.
 - Only write into cells marked `WRITE_INPUT` or other explicit input actions.
 - Never overwrite cells marked `KEEP_FORMULA`.
-- Never estimate missing values. Use `DATA_NOT_FOUND` or `MANUAL_INPUT_REQUIRED` for genuinely unresolvable Phase 1 fields. Use `PENDING_HUMAN_VALIDATION` for all Phase 2 fields.
+- Never estimate missing values. Use `DATA_NOT_FOUND` or `MANUAL_INPUT_REQUIRED` for genuinely unresolvable Phase 2 fields. Use `MANUAL_INPUT_REQUIRED` for all Phase 1 fields not present in the validated partner data file.
 - Use the RFA as the source of truth for approved campaign identity and approved budget fields, only after confirming approval status.
-- Internal verification / TXN data is the final KPI source when it conflicts with partner raw data — but this reconciliation is a Phase 2 step.
+- Internal verification / TXN data is the final KPI source when it conflicts with partner raw data — this reconciliation is a Phase 1 human task. The AI reads reconciled values from the validated partner data file.
 - Use the prompt-supplied MDR unless an approved higher-priority finance / BU override is explicitly defined for the run.
 - Keep all template colours, merges, labels, notes, and formulas unchanged.
 - Do not carry over values from prior campaigns or from example/template content.
@@ -87,12 +101,21 @@ The engine runs in two distinct phases. The AI executes Phase 1 only. Phase 2 is
 **Guardrail:** MDR is a campaign-specific controlled input.
 
 ### Step 3 - Register campaign-specific uploads
-**Phase 1 required files (AI run):** RFA / Sage approval file and partner raw data file. These are the only files required for Phase 1. If either is missing, stop and return `MANUAL_REVIEW_REQUIRED`.
-**Phase 2 files (human-completed):** Internal verification / TXN data, retention data, and finance rate source files. If these files are not uploaded, do not treat this as a blocking error. Mark all cells that depend on these files `PENDING_HUMAN_VALIDATION` and continue the Phase 1 run.
-**Do:** Register any uploaded files in the Source File Template and in the validation log. Note Phase 2 files as "to be completed in Phase 2."
-**Do not:** Do not flag the absence of Phase 2 files as an error. Do not infer a source from memory.
+**Phase 2 required files (AI run):** RFA / Sage approval file and validated partner data file. These are the only files required for Phase 2. If either is missing, stop and return `MANUAL_REVIEW_REQUIRED`.
+**Phase 1 files (human-completed):** Internal verification / TXN data, retention data, and finance rate source files. These are completed by the human in Phase 1 and their outputs are written into the validated partner data file. The AI does not flag their absence as a blocking error. If their outputs are not present in the validated partner data file, mark all dependent cells `MANUAL_INPUT_REQUIRED` and continue the Phase 2 run.
+
+PARTNER FILE FORMAT RULE:
+Detect format from file extension before reading.
+- .csv  → pd.read_csv() with encoding fallback
+- .xlsx → pd.read_excel(engine='openpyxl')
+- .xls  → pd.read_excel(engine='xlrd')
+Never assume CSV. Always detect first.
+If extension is unrecognised, stop and report under ACCESS FAILURE RULE.
+
+**Do:** Register any uploaded files in the Source File Template and in the validation log. Note Phase 1 human outputs as "completed in Phase 1."
+**Do not:** Do not flag the absence of Phase 1 files as an error. Do not infer a source from memory.
 **Checkpoint:** Source inventory completed with Phase 1 / Phase 2 status noted.
-**Guardrail:** Only Phase 1 files are blocking. Phase 2 files are optional for the AI run.
+**Guardrail:** Only Phase 2 files are blocking. Phase 1 human outputs, if absent from the validated partner data file, produce MANUAL_INPUT_REQUIRED — not a stop.
 
 ### Step 4 - Open mapping assets before writing cells
 **Do:** Read the Placeholder Dictionary and Cell-to-Source Mapping assets before touching any output cells. Use the Write Action field to decide whether a target cell must be populated, preserved as a formula, or flagged for manual handling.
@@ -106,39 +129,43 @@ The engine runs in two distinct phases. The AI executes Phase 1 only. Phase 2 is
 **Checkpoint:** General-info block populated.
 **Guardrail:** Approved RFA is the source of truth for identity and approved budget.
 
-### Step 6 - Normalize partner raw data (Phase 1)
-**Do:** Map the partner raw file into canonical fields: qualified transactions, qualified users, TPV, refunds, mechanics / waves, and campaign date coverage. Produce provisional KPI values (campaign participants, TPV, transaction count) from the partner CHARGE rows. Label these as provisional (partner-derived) in the output. Preserve raw partner totals for later variance checks by the human reviewer.
+### Step 6 - Normalize validated partner data file (Phase 2)
+
+Follow file_ingestion_skill.md exactly. Run check_deps() first.
+Never browse or preview the file directly. Always use read_partner_file().
+
+**Do:** Map the validated partner data file into canonical fields: qualified transactions, qualified users, TPV, refunds, mechanics / waves, and campaign date coverage. Extract final validated KPI values (campaign participants, TPV, transaction count) from the partner CHARGE rows. Because Phase 1 human validation has already been completed, these are treated as final values. If a KPI cannot be extracted, write `MANUAL_INPUT_REQUIRED`.
 **Do not:** Do not mix refunds into the primary KPI block unless a finance-approved net rule exists.
-**Checkpoint:** Partner staging summary completed. Provisional KPIs populated in Phase 1 cells.
-**Guardrail:** Partner-derived KPIs are provisional. Internal verification (Phase 2) is the final source of truth.
+**Checkpoint:** Partner staging summary completed. Final validated KPIs populated in Phase 2 cells.
+**Guardrail:** KPIs written by the AI in Phase 2 are treated as final validated values because Phase 1 human validation has already been completed.
 
-### Step 7 - Normalize internal verification data (Phase 2 — human-completed)
-**This step is a Phase 2 human-completed step. The AI must not attempt to perform this step.**
-**Do:** Leave all cells in the internal KPI reconciliation section marked `PENDING_HUMAN_VALIDATION`. Include a note that the team member will populate these from the internal database after the AI run.
-**Do not:** Do not populate internal KPI cells from partner data as a substitute. Do not silently prefer partner data over internal data.
-**Checkpoint:** Internal KPI cells written as `PENDING_HUMAN_VALIDATION`.
-**Guardrail:** Internal data normalization is reserved for Phase 2.
+### Step 7 - Read internal verification data from validated partner file (Phase 1 — human-completed)
+**This step is a Phase 1 human-completed task. The AI reads validated values from the partner data file.**
+**Do:** Read internal KPI reconciliation values from the validated partner data file. Write any values present. If internal KPI reconciliation values are not present in the validated partner data file, write `MANUAL_INPUT_REQUIRED` to all internal KPI cells.
+**Do not:** Do not populate internal KPI cells by computing them independently from raw partner data. Do not silently prefer partner data over reconciled internal data.
+**Checkpoint:** Internal KPI cells written with validated values or `MANUAL_INPUT_REQUIRED`.
+**Guardrail:** Internal data normalization is a Phase 1 human task. The AI only reads outputs, not performs the reconciliation.
 
-### Step 8 - Reconcile discrepancies (Phase 2 — human-completed)
-**This step is a Phase 2 human-completed step. The AI must not attempt to perform this step.**
-**Do:** Leave all KPI reconciliation fields (TPV variance, transaction variance, user variance) marked `PENDING_HUMAN_VALIDATION`. Include a note that the human reviewer will compare partner versus internal KPI values and log variances.
-**Do not:** Do not average the two sources or choose whichever looks better. Do not flag the absence of internal data as an error.
-**Checkpoint:** KPI reconciliation cells written as `PENDING_HUMAN_VALIDATION`.
-**Guardrail:** KPI reconciliation is reserved for Phase 2.
+### Step 8 - Read reconciled discrepancy values from validated partner file (Phase 1 — human-completed)
+**This step is a Phase 1 human-completed task. The AI reads validated values from the partner data file.**
+**Do:** Read KPI reconciliation fields (TPV variance, transaction variance, user variance) from the validated partner data file. Write any values present. If reconciliation values are not present in the validated partner data file, write `MANUAL_INPUT_REQUIRED`.
+**Do not:** Do not average the two sources or choose whichever looks better. Do not flag the absence of reconciliation data as an error — write `MANUAL_INPUT_REQUIRED` and continue.
+**Checkpoint:** KPI reconciliation cells written with validated values or `MANUAL_INPUT_REQUIRED`.
+**Guardrail:** KPI reconciliation is a Phase 1 human task.
 
-### Step 9 - Populate retention (Phase 2 — human-completed)
-**This step is a Phase 2 human-completed step. The AI must not attempt to perform this step.**
-**Do:** Leave all retention fields marked `PENDING_HUMAN_VALIDATION`. Include a note that the team member will populate these from the internal retention source aligned to the campaign cohort and post-campaign month buckets.
-**Do not:** Do not use assumed rates from the RFA as actual retention. Do not flag missing retention files as an error during Phase 1.
-**Checkpoint:** All retention cells written as `PENDING_HUMAN_VALIDATION`.
-**Guardrail:** Retention population is reserved for Phase 2.
+### Step 9 - Read retention values from validated partner file (Phase 1 — human-completed)
+**This step is a Phase 1 human-completed task. The AI reads validated values from the partner data file.**
+**Do:** Read retention values from the validated partner data file. Write any values present. If retention values are not present, write `MANUAL_INPUT_REQUIRED` to all retention fields.
+**Do not:** Do not use assumed rates from the RFA as actual retention. Do not flag missing retention data as an error during Phase 2.
+**Checkpoint:** All retention cells written with validated values or `MANUAL_INPUT_REQUIRED`.
+**Guardrail:** Retention population is a Phase 1 human task.
 
 ### Step 10 - Populate MDR and finance inputs
-**Phase 1 (AI populates):** Write the campaign-specific MDR input from the ignition prompt into the workbook MDR field. If CPAM Cost is available in the partner file, populate it; otherwise write `PENDING_HUMAN_VALIDATION`.
-**Phase 2 (human-completed):** Finance cost-rate inputs — Avg Reload Cost %, Avg Cloud Cost/Txn, and Avg PLSA Cost/Txn — are Phase 2 human inputs. The AI must write `PENDING_HUMAN_VALIDATION` to these fields. Do not infer or estimate these rates.
+**Phase 2 (AI populates):** Write the campaign-specific MDR input from the ignition prompt into the workbook MDR field. If CPAM Cost is available in the validated partner data file, populate it; otherwise write `MANUAL_INPUT_REQUIRED`.
+**Phase 1 (human-completed):** Finance cost-rate inputs — Avg Reload Cost %, Avg Cloud Cost/Txn, and Avg PLSA Cost/Txn — are Phase 1 human inputs. The AI reads these from the validated partner data file if present. If not present, write `MANUAL_INPUT_REQUIRED` to these fields. Do not infer or estimate these rates.
 **Do not:** Do not copy sample finance values from the workbook. Do not overwrite the traffic-light cell if it is formula-driven.
-**Checkpoint:** MDR written from ignition prompt. Finance rate fields written as `PENDING_HUMAN_VALIDATION`.
-**Guardrail:** Finance-controlled rate fields remain Phase 2 human inputs only.
+**Checkpoint:** MDR written from ignition prompt. Finance rate fields written with validated values or `MANUAL_INPUT_REQUIRED`.
+**Guardrail:** Finance-controlled rate fields are Phase 1 human inputs. The AI reads them from the validated partner data file or writes MANUAL_INPUT_REQUIRED.
 
 ### Step 11 - Apply the MDR traffic-light rule
 **Do:** Preserve the template logic for the traffic-light row. The result must follow this rule:
@@ -150,12 +177,12 @@ The engine runs in two distinct phases. The AI executes Phase 1 only. Phase 2 is
 **Checkpoint:** Traffic-light field resolved or appropriately flagged.
 **Guardrail:** The template rule must be preserved exactly.
 
-### Step 12 - Populate merchant-impact analysis (Phase 2 — human-completed)
-**This step is a Phase 2 human-completed step. The AI must not attempt to perform this step.**
-**Do:** Write `PENDING_HUMAN_VALIDATION` to all merchant-impact fields (TPV series, MTU series, growth values, CLTV, second-review decision).
-**Do not:** Do not invent baseline growth conventions. Do not flag missing BI data as an error during Phase 1.
-**Checkpoint:** All merchant-impact cells written as `PENDING_HUMAN_VALIDATION`.
-**Guardrail:** Merchant-impact data requires Phase 2 BI / internal database pulls.
+### Step 12 - Read merchant-impact values from validated partner file (Phase 1 — human-completed)
+**This step is a Phase 1 human-completed task. The AI reads validated values from the partner data file.**
+**Do:** Read merchant-impact values (TPV series, MTU series, growth values, narrative summaries) from the validated partner data file. Write any values present. If values are not present, write `MANUAL_INPUT_REQUIRED` to all merchant-impact fields.
+**Do not:** Do not invent baseline growth conventions. Do not flag missing BI data as an error during Phase 2.
+**Checkpoint:** All merchant-impact cells written with validated values or `MANUAL_INPUT_REQUIRED`.
+**Guardrail:** Merchant-impact data is a Phase 1 human task. The AI only reads outputs from the validated partner data file.
 
 ### Step 13 - Leave formulas intact
 **Do:** For revenue, total cost, direct cost, gross profit, ROI, CPAM cost per user, and helper-derived deltas, keep the workbook formulas exactly as-is. Only populate their dependency cells.
@@ -164,58 +191,50 @@ The engine runs in two distinct phases. The AI executes Phase 1 only. Phase 2 is
 **Guardrail:** Formula cells are part of the template logic.
 
 ### Step 14 - Write narratives and decisions last
-**Do:** After all Phase 1 numeric sections are validated, write concise narrative summaries where derivable from Phase 1 data. Leave Phase 2 narrative fields marked `PENDING_HUMAN_VALIDATION`.
+**Do:** After all Phase 2 numeric sections are validated, write concise narrative summaries where derivable from Phase 2 data. For Phase 1 narrative fields not present in the validated partner data file, write `MANUAL_INPUT_REQUIRED`.
 **Do not:** Do not let narratives contradict the numbers. Do not auto-approve 2nd review without a rule or confirmation.
-**Checkpoint:** Phase 1 narrative fields completed where possible.
+**Checkpoint:** Phase 2 narrative fields completed where possible.
 **Guardrail:** Narratives must be evidence-based.
 
 ### Step 15 - Quality assurance and export
-**Do:** Run final checks: no PII, Phase 1 fields fully populated, all Phase 2 fields clearly marked `PENDING_HUMAN_VALIDATION`, no broken formulas, date alignment validated, MDR and traffic-light rule validated, and all genuinely unresolved Phase 1 items marked `DATA_NOT_FOUND` or `MANUAL_INPUT_REQUIRED`.
+**Do:** Run final checks: no PII, Phase 2 AI fields fully populated, all Phase 1 fields not present in the validated partner data file clearly marked `MANUAL_INPUT_REQUIRED`, no broken formulas, date alignment validated, MDR and traffic-light rule validated, and all genuinely unresolved Phase 2 items marked `DATA_NOT_FOUND` or `MANUAL_INPUT_REQUIRED`.
 **Do not:** Do not ship a workbook that contains guessed values or overwritten formula cells.
-**Checkpoint:** Workbook ready for Phase 2 handoff.
+**Checkpoint:** Fully populated Phase 2 workbook ready. One Excel file per campaign ID saved.
 **Guardrail:** Zero-hallucination policy applies to every field.
 
 ## Final required outputs
 
-The engine must return exactly **2 outputs only**:
+The engine must return:
 
-1. **Partially completed Excel file (Phase 1 output)**
-   - Partially completed workbook ready for Phase 2 human validation
-   - Phase 1 sections (campaign identity, provisional partner KPIs, MDR, traffic light) fully populated
-   - All Phase 2 sections clearly marked `PENDING_HUMAN_VALIDATION` for the human reviewer
+1. **One fully populated Excel file per campaign processed in this session (Phase 2 output)**
+   - Filename format: `campaign_postmortem_[CAMPAIGN_ID]_[CAMPAIGN_NAME]_phase2.xlsx`
+   - Fully populated Phase 2 workbook with all AI-derivable fields populated
+   - Phase 1 fields not present in the validated partner data file marked `MANUAL_INPUT_REQUIRED`
    - Matches the master template design exactly
    - Preserves formatting, colours, formulas, structure, and worksheet design
 
-2. **Summary in chat**
-   - campaign identification details used
-   - files successfully read
-   - MDR percentage used
-   - traffic-light result
-   - major findings
-   - provisional partner KPI values populated in Phase 1
-   - Phase 2 fields awaiting human validation (listed clearly)
-   - missing Phase 1 files (if any — these are blocking)
-   - incomplete Phase 1 fields
-   - unresolved items requiring manual input or review
-   - validation warnings
+2. **One combined chat summary (after all campaigns are processed)**
+   - Per campaign: campaign ID, campaign name, files successfully read, MDR percentage used, traffic-light result, major findings, final validated KPI values populated, fields marked MANUAL_INPUT_REQUIRED (listed clearly), missing Phase 2 files (if any — these are blocking), unresolved items requiring manual input or review, validation warnings
+   - Overall session summary: campaigns processed, campaigns failed (with reasons), total Excel files saved
 
 Do not produce a third deliverable.
 
 ## Final QA checklist
 - Static engine sources read before run parameters and campaign-specific files.
-- Prompt MDR captured before workbook population.
+- Prompt MDR and Campaign ID captured before workbook population.
 - RFA status checked and approved before using the RFA ID.
 - Source inventory registered in the helper / source area with Phase 1 / Phase 2 status noted.
-- Phase 1 completeness confirmed: campaign identity block fully populated from RFA, provisional partner KPIs populated from CHARGE rows, MDR written from ignition prompt, traffic-light classification resolved.
-- All Phase 2 fields confirmed as `PENDING_HUMAN_VALIDATION` (not blank, not `DATA_NOT_FOUND`).
-- Required Phase 1 missing sources explicitly flagged (RFA or partner file absence is a blocking stop).
-- Retention populated only from observed retention data (Phase 2 human step — must be marked `PENDING_HUMAN_VALIDATION`).
-- MDR and finance inputs sourced only from approved inputs; finance rate fields marked `PENDING_HUMAN_VALIDATION`.
+- Phase 2 completeness confirmed: campaign identity block fully populated from RFA, final validated KPIs populated from validated partner data file CHARGE rows, MDR written from ignition prompt, traffic-light classification resolved.
+- All Phase 1 fields not present in the validated partner data file confirmed as `MANUAL_INPUT_REQUIRED` (not blank, not `DATA_NOT_FOUND`).
+- Required Phase 2 missing sources explicitly flagged (RFA or validated partner data file absence is a blocking stop).
+- Retention populated from validated partner data file if present; otherwise marked `MANUAL_INPUT_REQUIRED`.
+- MDR and finance inputs sourced only from approved inputs; finance rate fields read from validated partner data file or marked `MANUAL_INPUT_REQUIRED`.
 - Traffic-light rule checked against MDR.
 - Formula cells preserved.
 - Narrative cells checked against numbers.
 - No PII or row-level IDs in the final output.
-- Only 2 deliverables returned: Phase 1 partially completed workbook and chat summary.
+- One Excel file saved per campaign ID (naming format confirmed).
+- One combined chat summary returned after all campaigns are processed.
 
 ---
 
@@ -246,7 +265,10 @@ artifact_tool, artifact.recalculate(), or artifact.export() anywhere in the scri
 
 PARTNER FILE INGESTION — MANDATORY METHOD:
 
-You must read the partner data file using Python + pandas via the exact method
+Follow file_ingestion_skill.md exactly. Run check_deps() first.
+Never browse or preview the file directly. Always use read_partner_file().
+
+You must read the validated partner data file using Python + pandas via the exact method
 defined in file_ingestion_skill.md. Do not attempt to open, browse, or preview
 the file directly. Do not read it as plain text. The only accepted method is
 the read_partner_file() function defined in the skill file.
@@ -787,14 +809,14 @@ style(ws,'I43', fnt=FONT_11_RED)
 
 ---
 
-## Step 10 — Populate Phase 1 Campaign Values
+## Step 10 — Populate Phase 2 Campaign Values
 
 After the structure is fully built, write the campaign-specific values.
 Use the exact cell references below. Write only to anchor cells.
 
 ```python
-# ── PHASE 1 INPUT VALUES ──────────────────────────────────────────
-# Replace these variables with values derived from the RFA and partner CSV
+# ── PHASE 2 AI INPUT VALUES ───────────────────────────────────────
+# Replace these variables with values derived from the RFA and validated partner data file
 
 ws['C2']  = campaign_name         # string — from RFA
 ws['C3']  = rfa_id                # string — from RFA, only if Approved
@@ -808,7 +830,7 @@ ws['C11'] = mechanic_secondary    # string — from RFA or blank string
 ws['C12'] = rfa_amount            # number — from RFA e.g. 107500.00
 ws['C13'] = cost_centre           # string — from RFA
 
-# Partner-derived provisional KPIs
+# Final validated KPIs from validated partner data file (Phase 1 human validation already done)
 ws['C14'] = participants          # integer — distinct users on CHARGE rows
 ws['C15'] = tpv                   # float   — sum of transaction_amount on CHARGE rows
 ws['C16'] = txn_count             # integer — distinct transaction IDs on CHARGE rows
@@ -835,15 +857,16 @@ style(ws, 'C38',
     bdr=BORDER_ALL
 )
 
-# CPAM Cost — from partner file benefit_amount sum, or PENDING_HUMAN_VALIDATION
-ws['C24'] = cpam_cost             # float or string 'PENDING_HUMAN_VALIDATION'
+# CPAM Cost — from validated partner data file benefit_amount sum, or MANUAL_INPUT_REQUIRED
+ws['C24'] = cpam_cost             # float or string 'MANUAL_INPUT_REQUIRED'
 
-# ── PHASE 2 PLACEHOLDERS ─────────────────────────────────────────
-# Write PENDING_HUMAN_VALIDATION string into all Phase 2 cells
+# ── PHASE 1 HUMAN PLACEHOLDERS ────────────────────────────────────
+# Write MANUAL_INPUT_REQUIRED string into all Phase 1 cells not present
+# in the validated partner data file. Replace with actual values where available.
 
-PHV = 'PENDING_HUMAN_VALIDATION'
+MIR = 'MANUAL_INPUT_REQUIRED'
 
-phase2_cells = [
+phase1_cells = [
     'C18','D18','E18','F18','G18','H18',   # Retention P1–P6
     'C20','D20','E20','F20','G20','H20',   # Retention P7–P12
     'C26','C27','C28',                      # Finance cost rates
@@ -856,9 +879,9 @@ phase2_cells = [
     'C39','C40',                            # TPV narrative summaries
 ]
 # Note: C41 (Proceed to 2nd Review) and C43 (Est. 12M CLTV) are hidden rows.
-# Do not write PENDING_HUMAN_VALIDATION into hidden rows.
-for ref in phase2_cells:
-    ws[ref] = PHV
+# Do not write any value into hidden rows.
+for ref in phase1_cells:
+    ws[ref] = MIR
 ```
 
 ---
@@ -866,10 +889,12 @@ for ref in phase2_cells:
 ## Step 11 — Save the Output File
 
 ```python
-output_filename = f"campaign_postmortem_{campaign_name}_phase1.xlsx"
-# Sanitise filename — remove characters not safe for filenames
 import re
-output_filename = re.sub(r'[\\/*?:"<>|]', '_', output_filename)
+# Build filename using Campaign ID and Campaign Name
+output_filename = f"campaign_postmortem_{campaign_id}_{campaign_name}_phase2.xlsx"
+# Sanitise filename — replace spaces and special characters with underscores
+output_filename = re.sub(r'[\s\\/*?:"<>|]', '_', output_filename)
+output_filename = re.sub(r'_+', '_', output_filename)  # collapse multiple underscores
 
 wb.save(output_filename)
 print("Saved:", output_filename)
@@ -889,7 +914,7 @@ Do not call SpreadsheetArtifact, artifact_tool, recalculate, export, or render.
    Accepted formats: .csv, .xlsx, .xls"
 
 2. If CHARGE rows cannot be found in the partner data file:
-   Set participants, tpv, txn_count to 'PENDING_HUMAN_VALIDATION'
+   Set participants, tpv, txn_count to 'MANUAL_INPUT_REQUIRED'
    Note this in the chat summary under "Data Warnings."
 
 3. If any individual cell write fails:

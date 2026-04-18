@@ -164,7 +164,7 @@ critical = {
 unmapped = [k for k, v in critical.items() if v is None]
 if unmapped:
     print(f"\nWARNING: Could not map: {unmapped}. "
-          f"Affected KPIs will be set to PENDING_HUMAN_VALIDATION.")
+          f"Affected KPIs will be set to MANUAL_INPUT_REQUIRED.")
 ```
 
 ---
@@ -208,7 +208,7 @@ if txn_type_col:
           f"REFUND: {len(refunds)} | OTHER: {len(other)}")
 else:
     print("WARNING: transaction_type column not found. "
-          "Cannot split CHARGE/REFUND. All KPIs set to PENDING_HUMAN_VALIDATION.")
+          "Cannot split CHARGE/REFUND. All KPIs set to MANUAL_INPUT_REQUIRED.")
     charges = pd.DataFrame()
     refunds = pd.DataFrame()
 
@@ -216,13 +216,13 @@ else:
 def safe_nunique(df, col):
     if col and col in df.columns and len(df) > 0:
         return int(df[col].nunique())
-    return 'PENDING_HUMAN_VALIDATION'
+    return 'MANUAL_INPUT_REQUIRED'
 
 def safe_sum(df, col):
     if col and col in df.columns and len(df) > 0:
         val = pd.to_numeric(df[col], errors='coerce').sum()
         return round(float(val), 2)
-    return 'PENDING_HUMAN_VALIDATION'
+    return 'MANUAL_INPUT_REQUIRED'
 
 participants = safe_nunique(charges, userid_col)
 tpv          = safe_sum(charges, amount_col)

@@ -11,7 +11,7 @@ This framework is **campaign agnostic**.
 2. **Ignition prompt run parameters** for campaign-specific manual inputs explicitly supplied for the current run, including MDR if provided there.
 3. **Approved RFA (Sage)** for campaign identity, approved budget, official mechanics, stated objectives, and approved campaign date range.
 4. **Internal transaction / retention files** for KPI reconciliation, TPV verification, retention, and any value used for financial validation.
-5. **Partner raw data** for campaign performance extraction when internal files are absent, incomplete, or used as a first-pass operational source.
+5. **Partner data file** for campaign performance extraction — used after Phase 1 human validation has been completed.
 6. **Campaign Working File template** for structure, formulas, merged-cell layout, labels, and cell-level business rules.
 
 If two sources disagree:
@@ -22,18 +22,10 @@ If two sources disagree:
 
 ## Phase Boundary Rule
 
-The engine operates in two distinct phases. The AI executes Phase 1 only.
+The engine operates in two distinct phases. The AI executes **Phase 2 only**.
 
-### Phase 1 — AI-Only Fields
-The AI populates these fields during a Phase 1 run:
-- Campaign identity fields from the RFA (name, ID, dates, mechanics, amount, funding mechanism, cost centre)
-- Partner-derived KPIs extracted from CHARGE rows (campaign participants, TPV, transaction count) — labeled as provisional
-- MDR rate (from ignition prompt)
-- CPAM Cost (from partner file if present; otherwise `PENDING_HUMAN_VALIDATION`)
-- Traffic-light classification (derived from MDR)
-
-### Phase 2 — Human-Only Fields
-A team member completes these fields after receiving the Phase 1 output:
+### Phase 1 — Human-Only Fields
+A team member completes these fields **before** the AI runs:
 - Internal KPI reconciliation (internal TPV, internal participants, internal transaction count, all variance cells)
 - All retention cells (post-month 1 through 12)
 - All finance cost-rate inputs (Avg Reload Cost %, Avg Cloud Cost/Txn, Avg PLSA Cost/Txn)
@@ -42,19 +34,30 @@ A team member completes these fields after receiving the Phase 1 output:
 - Second-review decision
 - Any field that depends on internal database records, BI pulls, or finance rate workbooks
 
+### Phase 2 — AI-Only Fields
+The AI populates these fields during a Phase 2 run:
+- Campaign identity fields from the RFA (name, ID, dates, mechanics, amount, funding mechanism, cost centre)
+- Validated KPIs from the partner data file (campaign participants, TPV, transaction count) — treated as final validated values
+- MDR rate (from ignition prompt)
+- CPAM Cost (from partner data file if present; otherwise `MANUAL_INPUT_REQUIRED`)
+- Traffic-light classification (derived from MDR)
+- All formula-driven cells
+
+**KPIs written by the AI in Phase 2 are treated as final validated values because Phase 1 human validation has already been completed.**
+
 ### AI Behavior at the Phase Boundary
-- The AI must **never** substitute estimated values for Phase 2 fields.
-- Use `PENDING_HUMAN_VALIDATION` instead of `DATA_NOT_FOUND` for Phase 2 fields specifically. This signals to the human reviewer that the field is expected to be filled — not that the data is permanently unavailable.
-- Do not treat absent Phase 2 files as blocking errors. Only the RFA and partner raw data file are required for Phase 1.
+- The AI must **never** substitute estimated values for Phase 1 fields.
+- Use `MANUAL_INPUT_REQUIRED` for any Phase 1 field not present in the validated partner data file. This signals to the human reviewer that the field requires manual follow-up — not that the data is permanently unavailable.
+- Do not treat absent Phase 1 files as blocking errors. Only the RFA and validated partner data file are required for Phase 2.
 
 ## 2. Mandatory Stop / Flag Conditions
 Return `DATA_NOT_FOUND` or `MANUAL_REVIEW_REQUIRED` when any of the following apply:
 - RFA status is not explicitly **Approved**.
-- A Phase 1 required source file is missing (RFA or partner raw data file). If either Phase 1 file is absent, stop and return `MANUAL_REVIEW_REQUIRED`. Phase 2 files (internal TXN data, retention data, finance rate files) are not blocking — mark their dependent cells `PENDING_HUMAN_VALIDATION` and continue.
+- A Phase 2 required source file is missing (RFA or validated partner data file). If either Phase 2 file is absent, stop and return `MANUAL_REVIEW_REQUIRED`. Phase 1 files (internal TXN data, retention data, finance rate files) are human-completed tasks — if their outputs are not present in the validated partner data file, mark dependent cells `MANUAL_INPUT_REQUIRED` and continue.
 - Campaign dates in source files do not align and no BU override is provided.
 - Funding mechanism conflicts across trusted sources and no BU confirmation is provided.
 - MDR is required but missing from both the prompt run configuration and any approved supporting source.
-- Template logic depends on an external Phase 1 workbook that has not been uploaded.
+- Template logic depends on an external workbook that has not been uploaded.
 
 ## 3. Transaction Handling Rules
 - Default campaign KPI extraction to **successful campaign charges only** unless finance explicitly requests net-of-refund reporting.
@@ -156,7 +159,7 @@ Never use openpyxl.load_workbook() for any purpose in the population script.
 ## File Reading Guardrails
 
 **G-FR-1 — Always use Python + pandas to read partner files.**
-Never open, browse, or preview the partner file directly.
+Never open, browse, or preview the partner data file directly.
 The only accepted reading method is the read_partner_file() function
 defined in file_ingestion_skill.md.
 
@@ -176,3 +179,26 @@ Strip RM symbols and commas. Convert to numeric with errors='coerce'.
 **G-FR-6 — If the file cannot be read after all fallback attempts, stop.**
 Report the exact filename, extension detected, and error type.
 Do not continue to Excel generation with unread partner data.
+
+## Multi-Campaign Guardrails
+
+**G-MC-1 — Never carry data between campaigns.**
+Column mappings, KPI values, RFA fields, and MDR from Campaign 1
+must never influence Campaign 2 or any subsequent campaign.
+Re-run all ingestion and mapping steps fresh for each campaign.
+
+**G-MC-2 — Always use Campaign ID to link files.**
+The Campaign ID declared in the RUN CONFIGURATION is the authoritative
+link between an RFA file and a partner data file. Never infer pairings
+from merchant names, dates, or filenames.
+
+**G-MC-3 — Process sequentially, not simultaneously.**
+Complete all chunks for one campaign before starting the next.
+
+**G-MC-4 — Label all outputs with Campaign ID.**
+Every chunk confirmation, every Excel filename, and every summary section
+must include the Campaign ID so outputs are never mixed up.
+
+**G-MC-5 — If one campaign fails, continue to the next.**
+Log the failure clearly and process remaining campaigns.
+Do not abort the entire session because one campaign failed.
